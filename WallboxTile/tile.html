@@ -9,7 +9,7 @@ const demo=new URLSearchParams(location.search).has('demo');
 let token=location.hash.slice(1); // Fragment is never transmitted to the webserver.
 if(token){sessionStorage.setItem('wallbox:'+location.pathname,token);history.replaceState(null,'',location.pathname+location.search)}
 else token=sessionStorage.getItem('wallbox:'+location.pathname)||'';
-const controls=[['enabled','Ladefreigabe'],['mode','Lademodus'],['pvShare','PV-Anteil'],['current','Ampere (manuell)'],['phases','Phasen (manuell)'],['gridEnabled','Netzbegrenzung'],['gridLimit','Max. Netzbelastung'],['active','Modul aktiv']];
+const controls=[['active','Modul aktiv'],['enabled','Ladefreigabe'],['mode','Lademodus'],['pvShare','PV-Anteil'],['current','Ampere (manuell)'],['phases','Phasen (manuell)'],['gridEnabled','Netzbegrenzung'],['gridLimit','Max. Netzbelastung']];
 const details=[['status','Status'],['wallboxMode','Wallbox Modus'],['maxCurrent','Max. Ladestrom'],['error','Fehlercode'],['target','Zielzeit'],['desiredPhases','Phasen (Soll)'],['actualPhases','Phasen (Ist)']];
 let state={},historyData={},busy=false,editing=false,lastHistory=0;
 const $=id=>document.getElementById(id),format=(n,d=1)=>new Intl.NumberFormat('de-AT',{maximumFractionDigits:d}).format(n);
