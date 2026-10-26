@@ -52,7 +52,7 @@ class WallboxTile extends IPSModule
             return;
         }
         $url = htmlspecialchars($base . $this->Hook() . '#' . $this->ReadAttributeString('Token'), ENT_QUOTES, 'UTF-8');
-        $this->SetValue('Tile', '<iframe title="Wallbox" src="' . $url . '" style="display:block;width:100%;height:100%;min-height:280px;border:0" referrerpolicy="no-referrer"></iframe>');
+        $this->SetValue('Tile', '<iframe title="Wallbox" src="' . $url . '" style="display:block;width:100%;height:100%;min-height:0;border:0" referrerpolicy="no-referrer"></iframe>');
         $this->SetStatus(102);
     }
 
