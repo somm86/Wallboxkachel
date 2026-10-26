@@ -10,6 +10,7 @@
 .overview .card{padding:18px}.overview .eyebrow{margin-bottom:14px}.big{font-size:clamp(30px,4.5cqw,52px)}
 .summary-bottom{display:flex;justify-content:space-between;gap:10px;margin-top:16px;margin-bottom:5px}
 .energy-metric{display:flex;flex-direction:column;gap:4px;padding:10px 0}.energy-metric+.energy-metric{border-top:1px solid var(--line)}
+.battery-remaining{text-align:right;min-width:0;overflow-wrap:anywhere}.battery-summary .summary-bottom{align-items:baseline;flex-wrap:wrap}.battery-remaining strong{display:block}
 .battery-top{display:flex;justify-content:space-between;gap:10px;align-items:center}.battery-top strong{font-size:clamp(19px,2.5cqw,28px)}
 .battery-meter{height:13px;background:#0f181e;border:1px solid #405341;border-radius:5px;overflow:hidden;margin:12px 0 22px}
 .battery-meter>div{height:100%;width:0;background:var(--green)}.battery-summary>.badge{margin-top:12px}.badge.discharging{background:#443923;color:#ffd784}
@@ -19,7 +20,7 @@
 </style></head><body><main class="tile"><header><div><div class="eyebrow">ENERGIE · E-MOBILITÄT</div><h1>Meine Wallbox</h1></div><div class="connection"><span class="dot" id="dot"></span><span id="connection">Verbinde …</span><div id="demo"></div></div></header><div id="error" role="alert" hidden></div><div class="layout"><section class="overview" aria-label="Energieübersicht">
  <div class="card wallbox-summary"><div class="eyebrow">WALLBOX</div><div class="label">Aktuelle Ladeleistung</div><div class="big"><span id="power">–</span> <small>kW</small></div><div class="status"><span class="badge" data-field="status">–</span><span class="badge" data-field="wallboxMode">–</span></div><div class="summary-bottom"><span class="label">Geladene Energie</span><strong id="energy">–</strong></div><div class="label" data-field="chargeTime">–</div></div>
  <div class="card energy-summary"><div class="eyebrow">HAUS &amp; SONNE</div><div class="energy-metric"><span class="label">☀ PV-Überschuss</span><strong class="metric" data-field="pv">–</strong></div><div class="energy-metric"><span class="label">⌂ Haus ohne Wallbox</span><strong class="metric" data-field="house">–</strong></div></div>
- <div class="card battery-summary"><div class="eyebrow">PV-SPEICHER</div><div class="battery-top"><span class="label">Ladestand</span><strong id="batterySoc">–</strong></div><div id="batteryMeter" class="battery-meter" role="meter" aria-label="PV Speicher Ladestand" aria-valuemin="0" aria-valuemax="100"><div id="batteryFill"></div></div><div class="battery-top"><span class="label">Speicherleistung</span><strong id="batteryPower">–</strong></div><div id="batteryDirection" class="badge">Keine Daten</div><div class="notice">+ Laden · − Entladen</div><div class="summary-bottom"><span class="label" id="batteryRemainingLabel">Restzeit</span><strong id="batteryRemaining">–</strong></div></div>
+ <div class="card battery-summary"><div class="eyebrow">PV-SPEICHER</div><div class="battery-top"><span class="label">Ladestand</span><strong id="batterySoc">–</strong></div><div id="batteryMeter" class="battery-meter" role="meter" aria-label="PV Speicher Ladestand" aria-valuemin="0" aria-valuemax="100"><div id="batteryFill"></div></div><div class="battery-top"><span class="label">Speicherleistung</span><strong id="batteryPower">–</strong></div><div id="batteryDirection" class="badge">Keine Daten</div><div class="notice">+ Laden · − Entladen</div><div class="summary-bottom"><span class="label" id="batteryRemainingLabel">Restzeit</span><div class="battery-remaining"><strong id="batteryRemaining">–</strong><div class="notice" id="batteryUntil"></div></div></div></div>
 </section><section class="card controls"><h2>Ladesteuerung</h2><div id="controls"></div></section><section class="card operating"><h2>Betriebsdaten</h2><div id="details"></div></section><section class="card chart-card"><div class="chart-top"><h2>Leistungsverlauf · 24 Stunden</h2><div class="legend"><span style="--series:#a4ed79">Wallbox</span><span style="--series:#ffd784">PV-Überschuss</span><span style="--series:#72c8ff">Haus ohne Wallbox</span></div></div><svg class="chart" id="chart" role="img" aria-label="Leistungsverlauf der letzten 24 Stunden"></svg><div class="chart-note" id="chartNote">Lade Archivdaten …</div></section></div><footer><span>PV Wallbox Manager</span><span id="updated">Noch keine Daten</span></footer></main>
 <script>
 'use strict';
@@ -37,6 +38,20 @@ function error(message){$('error').hidden=!message;text($('error'),message)}
 async function api(op,extra={}){if(demo)return demoAPI(op,extra);if(!token)throw Error('Zugriffsschlüssel fehlt. Bitte die HTMLBox über Symcon öffnen.');const response=await fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json','X-Wallbox-Token':token},body:JSON.stringify({op,...extra}),cache:'no-store',signal:AbortSignal.timeout(12000)});const data=await response.json();if(!response.ok)throw Error(data.error||'Verbindung fehlgeschlagen');return data}
 function canControl(f){return f&&!f.missing&&f.writable&&(f.type===0||(f.profile&&(f.profile.associations.length||f.profile.max>f.profile.min)))}
 async function act(key,value){if(busy)return;busy=true;document.querySelectorAll('#controls button,#controls input').forEach(el=>el.disabled=true);try{state=(await api('action',{key,value})).fields;error('')}catch(e){error(e.message)}finally{busy=false;editing=false;render();}}
+function batteryRemainingDisplay(field,now=new Date()){
+ if(!field||field.missing||typeof field.text!=='string')return null;
+ // Use the known h:m presentation; the raw float's unit is not specified.
+ const match=field.text.match(/^\s*(\d+):([0-5]?\d)\s*(?:h|Std\.?)?\s*$/i);
+ if(!match)return null;
+ const hours=Number(match[1]),minutes=Number(match[2]),total=hours*60+minutes;
+ if(!Number.isSafeInteger(total))return null;
+ const end=new Date(now.getTime()+total*60000);
+ if(!Number.isFinite(end.getTime()))return null;
+ const tomorrow=new Date(now);tomorrow.setDate(tomorrow.getDate()+1);
+ const sameDay=(a,b)=>a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate();
+ const day=sameDay(end,now)?'':sameDay(end,tomorrow)?'morgen, ':end.toLocaleDateString('de-AT')+', ';
+ return {duration:hours+' Std. '+minutes+' Min.',until:'bis '+day+end.toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'})+' Uhr'};
+}
 function renderBattery(){
  const soc=state.batterySoc?.value,power=state.batteryPower?.value;
  const hasSoc=typeof soc==='number'&&Number.isFinite(soc),hasPower=typeof power==='number'&&Number.isFinite(power);
@@ -48,7 +63,9 @@ function renderBattery(){
  text($('batteryDirection'),!hasPower?'Keine Daten':power>0?'↓ Speicher wird geladen':power<0?'↑ Speicher wird entladen':'Speicher in Ruhe');
  const remaining=state.batteryRemaining;
  text($('batteryRemainingLabel'),hasPower&&power>0?'Restzeit Laden':hasPower&&power<0?'Restzeit Entladen':'Restzeit');
- text($('batteryRemaining'),hasPower&&power!==0&&remaining&&!remaining.missing&&remaining.text?remaining.text:'–');
+ const time=hasPower&&power!==0?batteryRemainingDisplay(remaining):null;
+ text($('batteryRemaining'),time?time.duration:'–');
+ text($('batteryUntil'),time?time.until:'');
  $('batteryDirection').className='badge'+(hasPower&&power>0?' good':hasPower&&power<0?' discharging':'');
 }
 function render(){

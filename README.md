@@ -14,7 +14,7 @@ Die Energieübersicht gruppiert Wallbox, Haus/PV und Speicher. Darunter stehen d
 
 ## Anzeigen und Bedienung
 
-- PV-Speicher-Restzeit aus **29716**, unverändert mit der Symcon-Formatierung (z.B. `0:33`). Bei positiver Leistung „Restzeit Laden“, bei negativer „Restzeit Entladen“. Im Ruhezustand oder bei fehlenden Daten erscheint „–“. Die Variable muss selbst die zur aktuellen Richtung passende Restzeit liefern; es wird keine separate Ladezeit berechnet.
+- PV-Speicher-Restzeit aus **29716**, als Stunden und Minuten (z.B. `0 Std. 33 Min.`) mit voraussichtlicher Endzeit (`bis 14:25 Uhr`). Das formatierte `h:m` aus Symcon wird ausgewertet; der rohe Float wird wegen seiner unbekannten Einheit nicht umgerechnet. Die Endzeit wird aus der aktuellen Gerätezeit plus Restdauer berechnet; bei Tageswechsel erscheint „morgen“ oder das Datum. Ungültige Zeitangaben werden als „–“ angezeigt. Bei positiver Leistung „Restzeit Laden“, bei negativer „Restzeit Entladen“. Im Ruhezustand oder bei fehlenden Daten erscheint „–“. Die Variable muss selbst die zur aktuellen Richtung passende Restzeit liefern; es wird keine separate Ladezeit berechnet.
 - PV-Speicher: Ladestand (45769) mit Füllbalken und Leistung (18192) in W. Positive Leistung bedeutet Laden, negative Leistung Entladen, 0 W Ruhe. Fehlende Werte werden als solche angezeigt.
 - Ladeleistung in kW, geladene Energie in kWh, PV-Überschuss und Hausverbrauch ohne Wallbox.
 - Status, Wallboxmodus, maximaler Ladestrom, Fehlercode, Zielzeit, Soll-/Ist-Phasen und Ladezeit.
@@ -50,7 +50,7 @@ Die String- und Status-HTML-Variablen werden nicht als fremder HTML-Code ausgef�
 | Phasen Soll | 59374 | Anzeige |
 | Phasen Ist | 41916 | Anzeige |
 | PV Speicher Ladestand | 45769 | Anzeige in % |
-| PV Speicher Restzeit | 29716 | Formatierte Anzeige h:m, je nach Leistung Laden/Entladen |
+| PV Speicher Restzeit | 29716 | Stunden, Minuten und voraussichtliche Uhrzeit, je nach Leistung Laden/Entladen |
 | PV Speicher Leistung | 18192 | Anzeige in W, + Laden / − Entladen |
 | Ladezeit | 50934 | Anzeige |
 | Modul aktiv | 23338 | Aktion |
@@ -66,6 +66,8 @@ Wer die HTMLBox lesen kann, kann mit ihrem Schlüssel die konfigurierten Aktione
 Der vorhandene Checkout ist bereits isoliert; kein zusätzliches Git-Worktree erforderlich.
 
 Demovorschau: Im Repository `python3 -m http.server 8080 --bind 127.0.0.1` starten, dann lokal `/WallboxTile/tile.html?demo` öffnen. **Ausschließlich Beispieldaten**, keine Symcon-Verbindung. Die Demo verändert keine realen Variablen.
+
+Restzeit-Prüfung: `node tests/battery-time-test.cjs` prüft Stunden/Minuten, Endzeit, Tageswechsel und fehlende/ungültige Werte.
 
 Backend: `php -n tests/module-test.php` und `php -n -l WallboxTile/module.php`. Die Tests prüfen Aktionen, Grenzen, Profile, fehlende Variablen, Archivsortierung, Speicherwerte und Modulfreigabe mit Symcon-Stubs.
 
