@@ -67,5 +67,11 @@ check($module->Snapshot()['fields']['power']['missing'], 'Missing variable expli
 $variables[50177] = $base;
 check($module->History()['power']['points'] === [[100, 50], [200, 100]], 'History ordered by time');
 check($module->History()['pv']['message'] === 'Archivierung nicht aktiv', 'Missing archive series explained');
-check(count(json_decode($module->GetConfigurationForm(), true)['elements']) === 22, 'All configured variables in form');
+check(count(json_decode($module->GetConfigurationForm(), true)['elements']) === 24, 'All configured variables in form');
+$variables[45769] = array_replace($base, ['VariableType' => 2, 'value' => 4.0]);
+$variables[18192] = array_replace($base, ['VariableType' => 2, 'value' => -704.0]);
+check($module->Snapshot()['fields']['batterySoc']['value'] === 4.0, 'Battery state of charge uses 45769');
+check($module->Snapshot()['fields']['batteryPower']['value'] === -704.0, 'Battery discharge sign preserved');
+check(!$module->Snapshot()['fields']['batteryPower']['writable'], 'Battery power is read only');
+rejects($module, 'batteryPower', 500);
 echo "PASS: $checks backend contract checks\n";

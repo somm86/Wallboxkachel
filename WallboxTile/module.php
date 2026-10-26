@@ -14,6 +14,8 @@ class WallboxTile extends IPSModule
         'current' => [12961, 'Ampere (manuell)'], 'phases' => [11959, 'Phasen (manuell)'],
         'gridEnabled' => [52763, 'Netzbegrenzung aktiv'], 'gridLimit' => [30984, 'Maximale Netzbelastung'],
         'desiredPhases' => [59374, 'Wallbox Phasen (Soll)'], 'actualPhases' => [41916, 'Fahrzeug Phasen (Ist)'],
+        'batterySoc' => [45769, 'PV Speicher Ladestand'],
+        'batteryPower' => [18192, 'PV Speicher Leistung'],
         'chargeTime' => [50934, 'Ladezeit'], 'active' => [23338, 'Modul aktiv']
     ];
     private const CONTROLS = ['enabled', 'mode', 'pvShare', 'current', 'phases', 'gridEnabled', 'gridLimit', 'active'];
