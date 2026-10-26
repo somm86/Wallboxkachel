@@ -42,6 +42,7 @@ function rejects($module, $key, $value) {
 $base = ['VariableType' => 1, 'VariableCustomProfile' => '', 'VariableProfile' => 'range', 'VariableCustomAction' => 0, 'VariableAction' => 10, 'value' => 7];
 $variables[12961] = $base;
 $variables[25784] = array_replace($base, ['VariableProfile' => 'enum', 'value' => 10]);
+$variables[23338] = array_replace($base, ['VariableType' => 0, 'VariableProfile' => '', 'value' => true]);
 $variables[16098] = array_replace($base, ['VariableType' => 0, 'VariableProfile' => '', 'value' => true]);
 $module->Control('current', 16);
 check($actions === [[12961, 16]], 'Numeric action forwards original ID');
@@ -49,6 +50,10 @@ $module->Control('mode', 40);
 check(end($actions) === [25784, 40], 'Profile values used instead of UI indices');
 $module->Control('enabled', false);
 check(end($actions) === [16098, false], 'Boolean action');
+$module->Control('active', false);
+check(end($actions) === [23338, false], 'Module enable switch forwards boolean action');
+rejects($module, 'active', 1);
+check(!isset($module->Snapshot()['fields']['price']) && !isset($module->Snapshot()['fields']['pricesValid']), 'Price fields removed');
 foreach ([5, 33, 6.5, '16', null, INF] as $value) { rejects($module, 'current', $value); }
 rejects($module, 'mode', 1);
 rejects($module, 'enabled', 1);
@@ -62,9 +67,5 @@ check($module->Snapshot()['fields']['power']['missing'], 'Missing variable expli
 $variables[50177] = $base;
 check($module->History()['power']['points'] === [[100, 50], [200, 100]], 'History ordered by time');
 check($module->History()['pv']['message'] === 'Archivierung nicht aktiv', 'Missing archive series explained');
-check(count(json_decode($module->GetConfigurationForm(), true)['elements']) === 25, 'All configured variables in form');
-$variables[13121] = array_replace($base, ['value' => '[{"timestamp":200,"price":-2.5},{"timestamp":100,"price":20}]']);
-check($module->Forecast()['points'] === [[100, 20.0], [200, -2.5]], 'Price forecast accepts negative prices and sorts');
-$variables[13121]['value'] = '<script>bad</script>';
-check($module->Forecast()['points'] === [], 'Invalid forecast does not become HTML');
+check(count(json_decode($module->GetConfigurationForm(), true)['elements']) === 22, 'All configured variables in form');
 echo "PASS: $checks backend contract checks\n";

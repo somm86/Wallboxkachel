@@ -15,14 +15,13 @@ Die Kachel passt sich der verfügbaren Breite an. Bei kleinen Höhen bleibt der 
 ## Anzeigen und Bedienung
 
 - Ladeleistung in kW, geladene Energie in kWh, PV-Überschuss und Hausverbrauch ohne Wallbox.
-- Status, Wallboxmodus, maximaler Ladestrom, Fehlercode, Zielzeit, Soll-/Ist-Phasen, Börsenpreis, Preisgültigkeit, Ladezeit und Modulstatus.
-- Ladefreigabe, Lademodus, PV-Anteil, manueller Ladestrom, manuelle Phasen, Netzbegrenzung und maximale Netzbelastung.
+- Status, Wallboxmodus, maximaler Ladestrom, Fehlercode, Zielzeit, Soll-/Ist-Phasen und Ladezeit.
+- Ladefreigabe, Lademodus, PV-Anteil, manueller Ladestrom, manuelle Phasen, Netzbegrenzung, maximale Netzbelastung und Modul aktiv.
 - 24 Stunden Leistungsverlauf, mit stündlichen Archiv-Mittelwerten für Wallbox/PV/Haus. Keine Rohdatenabschneidung bei hoher Aufzeichnungsfrequenz.
-- Börsenpreis-Vorschau aus Variable **13121**. Unterstütztes JSON: `[{"timestamp": 1792998000, "price": 20.901}]`, mit Unix-Sekunden und **ct/kWh**. Das vollständige JSON-Schema war auf dem Screenshot nicht lesbar. Wenn dein Modul andere Feldnamen oder Einheiten liefert, bitte ein anonymisiertes Beispiel zur Anpassung verwenden. Unbekannte Daten zeigen einen Hinweis. Der HTML-Inhalt der Variable 31594 wird nicht ungeprüft eingebettet.
 
 Die aktuellen Werte werden alle 5 Sekunden geladen, die Diagramme jede Minute. Die Browser-Zeitzone bestimmt die Beschriftung der Zeitachsen. Es wird keine Zielzeit neu berechnet und keine Wallboxregelung ersetzt.
 
-**Steuerung:** Das Modul ruft ausschließlich `RequestAction` für die sieben vorgesehenen, konfigurierten Steuervariablen auf. Es verwendet deren tatsächliche Profil-Assoziationen, Min-/Max-Werte und Schrittweiten. Die Moduswerte aus der Demo sind nur Beispieldaten. Ohne Variablenaktion bleibt ein Feld schreibgeschützt; ohne passendes numerisches Profil erscheint ein Hinweis. Ein angenommener Befehl bestätigt keine physische Zustandsänderung der Wallbox; die Folgewertabfragen zeigen den Zustand der Symcon-Variablen.
+**Steuerung:** Das Modul ruft ausschließlich `RequestAction` für die acht vorgesehenen, konfigurierten Steuervariablen auf. Es verwendet deren tatsächliche Profil-Assoziationen, Min-/Max-Werte und Schrittweiten. Die Moduswerte aus der Demo sind nur Beispieldaten. Ohne Variablenaktion bleibt ein Feld schreibgeschützt; ohne passendes numerisches Profil erscheint ein Hinweis. Ein angenommener Befehl bestätigt keine physische Zustandsänderung der Wallbox; die Folgewertabfragen zeigen den Zustand der Symcon-Variablen.
 
 Die String- und Status-HTML-Variablen werden nicht als fremder HTML-Code ausgeführt. Textausgaben werden mit DOM-Textmethoden gesetzt.
 
@@ -48,11 +47,8 @@ Die String- und Status-HTML-Variablen werden nicht als fremder HTML-Code ausgef�
 | Max. Netzbelastung | 30984 | Aktion |
 | Phasen Soll | 59374 | Anzeige |
 | Phasen Ist | 41916 | Anzeige |
-| Börsenpreis | 21569 | Anzeige |
-| Preise gültig | 54523 | Anzeige |
-| Preisvorschau JSON | 13121 | Diagramm |
 | Ladezeit | 50934 | Anzeige |
-| Modul aktiv | 23338 | Anzeige |
+| Modul aktiv | 23338 | Aktion |
 
 ## Zugang
 
@@ -66,8 +62,8 @@ Der vorhandene Checkout ist bereits isoliert; kein zusätzliches Git-Worktree er
 
 Demovorschau: Im Repository `python3 -m http.server 8080 --bind 127.0.0.1` starten, dann lokal `/WallboxTile/tile.html?demo` öffnen. **Ausschließlich Beispieldaten**, keine Symcon-Verbindung. Die Demo verändert keine realen Variablen.
 
-Backend: `php -n tests/module-test.php` und `php -n -l WallboxTile/module.php`. Die Tests prüfen Aktionen, Grenzen, Profile, fehlende Variablen, Archivsortierung und Preisvorschau mit Symcon-Stubs.
+Backend: `php -n tests/module-test.php` und `php -n -l WallboxTile/module.php`. Die Tests prüfen Aktionen, Grenzen, Profile, fehlende Variablen, Archivsortierung und Modulfreigabe mit Symcon-Stubs.
 
 Browser: Playwright außerhalb des Checkouts installieren, z.B. `npm install --prefix /tmp/wallbox-tools --cache /tmp/wallbox-npm-cache playwright`. Mit laufendem Demoserver `NODE_PATH=/tmp/wallbox-tools/node_modules node tests/browser-test.cjs` ausführen. Verwendet `/usr/bin/chromium`, alternativ `CHROMIUM_PATH` setzen. Prüft vier Größen, Moduswechsel, Freigabe, Diagramme und fehlenden Zugriffsschlüssel. Screenshots werden nach `/tmp` geschrieben.
 
-PHP-Syntaxprüfung, Backend-Vertragstests und Chromium-Demotests wurden in der Cloud ausgeführt. Eine reale Symcon-Instanz samt Wallbox ist hier nicht angebunden. Installation, HTMLBox-Einbettung, Webserver-Zugriff, reale Profile und physische Schaltaktionen müssen dort abschließend geprüft werden. Es wurde nichts auf GitHub hochgeladen oder auf deiner Wallbox geschaltet.
+PHP-Syntaxprüfung, Backend-Vertragstests und Chromium-Demotests wurden in der Cloud ausgeführt. Eine reale Symcon-Instanz samt Wallbox ist hier nicht angebunden. Installation, HTMLBox-Einbettung, Webserver-Zugriff, reale Profile und physische Schaltaktionen müssen dort abschließend geprüft werden. Die Tests schalten keine reale Wallbox.

@@ -14,11 +14,9 @@ class WallboxTile extends IPSModule
         'current' => [12961, 'Ampere (manuell)'], 'phases' => [11959, 'Phasen (manuell)'],
         'gridEnabled' => [52763, 'Netzbegrenzung aktiv'], 'gridLimit' => [30984, 'Maximale Netzbelastung'],
         'desiredPhases' => [59374, 'Wallbox Phasen (Soll)'], 'actualPhases' => [41916, 'Fahrzeug Phasen (Ist)'],
-        'price' => [21569, 'Börsenpreis'], 'pricesValid' => [54523, 'Strompreise gültig'],
-        'forecast' => [13121, 'Börsenpreis-Vorschau (JSON)'],
         'chargeTime' => [50934, 'Ladezeit'], 'active' => [23338, 'Modul aktiv']
     ];
-    private const CONTROLS = ['enabled', 'mode', 'pvShare', 'current', 'phases', 'gridEnabled', 'gridLimit'];
+    private const CONTROLS = ['enabled', 'mode', 'pvShare', 'current', 'phases', 'gridEnabled', 'gridLimit', 'active'];
 
     public function Create()
     {
@@ -172,27 +170,6 @@ class WallboxTile extends IPSModule
         return $result;
     }
 
-    public function Forecast(): array
-    {
-        $id = $this->ReadPropertyInteger('forecast');
-        if (!$id || !IPS_VariableExists($id)) { return ['points' => [], 'message' => 'Vorschauvariable fehlt']; }
-        $rows = json_decode((string) GetValue($id), true);
-        if (!is_array($rows)) { return ['points' => [], 'message' => 'Vorschau enthält kein gültiges JSON']; }
-        $points = [];
-        foreach ($rows as $row) {
-            if (!is_array($row)) { continue; }
-            // The screenshot shows timestamp but not the complete price field.
-            $timestamp = $row['timestamp'] ?? null;
-            $price = $row['price'] ?? null;
-            if (is_numeric($timestamp) && is_numeric($price) && is_finite((float) $price)) {
-                $points[] = [(int) $timestamp, (float) $price];
-            }
-        }
-        usort($points, static function ($a, $b) { return $a[0] <=> $b[0]; });
-        return ['points' => array_slice($points, 0, 384),
-            'message' => $points ? '' : 'Erwartetes Format: timestamp (Unix-Sekunden), price (ct/kWh)'];
-    }
-
     protected function ProcessHookData()
     {
         header('Cache-Control: no-store');
@@ -217,7 +194,6 @@ class WallboxTile extends IPSModule
             switch ($data['op'] ?? '') {
                 case 'state': $result = $this->Snapshot(); break;
                 case 'history': $result = $this->History(); break;
-                case 'forecast': $result = $this->Forecast(); break;
                 case 'action': $this->Control($data['key'] ?? '', $data['value'] ?? null); $result = $this->Snapshot(); break;
                 default: throw new InvalidArgumentException('Unbekannte Anfrage');
             }
