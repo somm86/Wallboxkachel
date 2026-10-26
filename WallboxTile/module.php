@@ -134,7 +134,10 @@ class WallboxTile extends IPSModule
             if (!is_finite((float) $value) || ($field['type'] === 1 && floor($value) != $value)) {
                 throw new InvalidArgumentException('Ungültiger Zahlenwert');
             }
-            $profile = $field['profile'];
+            // The requested vehicle target range is explicit, independent of its display profile.
+            $profile = $key === 'carTarget'
+                ? ['min' => 0, 'max' => 100, 'step' => 1, 'associations' => []]
+                : $field['profile'];
             if (!$profile) { throw new InvalidArgumentException('Variablenprofil mit Grenzen erforderlich'); }
             if ($profile['associations']) {
                 if (!in_array($value, array_column($profile['associations'], 'Value'))) {

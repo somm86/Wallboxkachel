@@ -85,7 +85,11 @@ check($module->Snapshot()['fields']['carRange']['value'] === 200, 'Car range use
 check(!$module->Snapshot()['fields']['carSoc']['writable'], 'Car SOC read only');
 $module->Control('carTarget', 20);
 check(end($actions) === [42679, 20.0], 'Car target forwards float action to 42679');
-rejects($module, 'carTarget', 33);
+foreach ([0, 33, 100] as $target) {
+    $module->Control('carTarget', $target);
+    check(end($actions) === [42679, (float) $target], 'Car target supports full 0-100 range');
+}
+foreach ([-1, 101, 80.5, '80'] as $target) { rejects($module, 'carTarget', $target); }
 $variables[42679]['VariableAction'] = 0;
 rejects($module, 'carTarget', 20);
 $variables[13288] = array_replace($base, ['VariableType' => 2, 'value' => -770.0]);
