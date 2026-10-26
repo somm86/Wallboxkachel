@@ -8,12 +8,14 @@ Responsive HTMLBox für die Kachelvisualisierung, passend zum PVWallboxManager a
 2. Eine Instanz **Wallbox Kachel** erstellen. Die Variablen aus deinen Bildern sind vorausgewählt; alle IDs in der Instanzkonfiguration kontrollieren.
 3. Falls die Visualisierung einen anderen Ursprung als der Symcon-Webserver verwendet, unter **Symcon-Webserver URL** dessen vom Anzeigegerät erreichbare HTTPS-Adresse eintragen. Bei gleichem Ursprung kann das Feld leer bleiben. Bei Fernzugriff muss dieser Webserver über deinen vorhandenen gesicherten Zugang erreichbar sein. Ein relativer Hook-Pfad funktioniert nicht automatisch über jeden Symcon-Connect- oder App-Zugang.
 4. Änderungen übernehmen. Die untergeordnete Stringvariable **Wallbox** mit Profil `~HTMLBox` zur Kachelvisualisierung hinzufügen und als HTMLBox darstellen. Breite und Höhe dort einstellen.
-5. Für die Verlaufsdiagramme im Archiv-Control die Aufzeichnung von **50177**, **18090** und **31864** aktivieren. Vorhandene Daten werden verwendet; das Modul verändert deine Archivkonfiguration nicht.
+5. Für die Verlaufsdiagramme im Archiv-Control die Aufzeichnung von **50177**, **18090** und **31864** und für den Netzverlauf **13288** aktivieren. Vorhandene Daten werden verwendet; das Modul verändert deine Archivkonfiguration nicht.
 
-Die Energieübersicht gruppiert Wallbox, Haus/PV und Speicher. Darunter stehen die Ladesteuerung sowie Betriebsdaten und Verlauf nebeneinander; auf schmalen Kacheln untereinander. „Modul aktiv“ bleibt der erste Schalter. Die Kachel passt sich der verfügbaren Breite an. Bei kleinen Höhen bleibt der Inhalt innerhalb der Kachel scrollbar. Alle Werte bleiben zugänglich; eine Mindesthöhe von 280 px verhindert unbedienbar kleine Inhalte. Die tatsächliche HTMLBox-Höhe hängt auch von den Einstellungen deiner Symcon-Visualisierung ab.
+Die Energieübersicht gruppiert Wallbox, Haus/PV, Speicher und E-Auto in vier Bereichen; auf mittleren Breiten werden daraus zwei Spalten. Darunter stehen die Ladesteuerung sowie Betriebsdaten und Verlauf nebeneinander; auf schmalen Kacheln untereinander. „Modul aktiv“ bleibt der erste Schalter. Die Kachel passt sich der verfügbaren Breite an. Bei kleinen Höhen bleibt der Inhalt innerhalb der Kachel scrollbar. Alle Werte bleiben zugänglich; eine Mindesthöhe von 280 px verhindert unbedienbar kleine Inhalte. Die tatsächliche HTMLBox-Höhe hängt auch von den Einstellungen deiner Symcon-Visualisierung ab.
 
 ## Anzeigen und Bedienung
 
+- Haus & Sonne: Netzleistung **13288** in W mit Vorzeichen. Anklicken öffnet einen 24-Stunden-Graphen mit stündlichen Archiv-Mittelwerten; Escape oder „Schließen“ schließt ihn. Keine Zuordnung von positiven/negativen Werten zu Bezug/Einspeisung ohne Kenntnis der Zählerkonvention.
+- E-Auto: Akkustand **48784** mit Füllbalken, Restreichweite **59274** in km und Soll-Ladestand **42679** als Dropdown. Auswahlwerte stammen aus Profil-Assoziationen oder Prozentgrenzen und Schrittweite des Profils (maximal 201 Optionen). Ohne passende Profilwerte oder Variablenaktion bleibt das Dropdown gesperrt. Änderungen werden über `RequestAction` weitergegeben; die Fahrzeuganbindung muss diese unterstützen.
 - PV-Speicher-Restzeit aus **29716**, als Stunden und Minuten (z.B. `0 Std. 33 Min.`) mit voraussichtlicher Endzeit (`bis 14:25 Uhr`). Das formatierte `h:m` aus Symcon wird ausgewertet; der rohe Float wird wegen seiner unbekannten Einheit nicht umgerechnet. Die Endzeit wird aus der aktuellen Gerätezeit plus Restdauer berechnet; bei Tageswechsel erscheint „morgen“ oder das Datum. Ungültige Zeitangaben werden als „–“ angezeigt. Bei positiver Leistung „Restzeit Laden“, bei negativer „Restzeit Entladen“. Im Ruhezustand oder bei fehlenden Daten erscheint „–“. Die Variable muss selbst die zur aktuellen Richtung passende Restzeit liefern; es wird keine separate Ladezeit berechnet.
 - PV-Speicher: Ladestand (45769) mit Füllbalken und Leistung (18192) in W. Positive Leistung bedeutet Laden, negative Leistung Entladen, 0 W Ruhe. Fehlende Werte werden als solche angezeigt.
 - Ladeleistung in kW, geladene Energie in kWh, PV-Überschuss und Hausverbrauch ohne Wallbox.
@@ -23,7 +25,7 @@ Die Energieübersicht gruppiert Wallbox, Haus/PV und Speicher. Darunter stehen d
 
 Die aktuellen Werte werden alle 5 Sekunden geladen, die Diagramme jede Minute. Die Browser-Zeitzone bestimmt die Beschriftung der Zeitachsen. Es wird keine Zielzeit neu berechnet und keine Wallboxregelung ersetzt.
 
-**Steuerung:** Das Modul ruft ausschließlich `RequestAction` für die acht vorgesehenen, konfigurierten Steuervariablen auf. Es verwendet deren tatsächliche Profil-Assoziationen, Min-/Max-Werte und Schrittweiten. Die Moduswerte aus der Demo sind nur Beispieldaten. Ohne Variablenaktion bleibt ein Feld schreibgeschützt; ohne passendes numerisches Profil erscheint ein Hinweis. Ein angenommener Befehl bestätigt keine physische Zustandsänderung der Wallbox; die Folgewertabfragen zeigen den Zustand der Symcon-Variablen.
+**Steuerung:** Das Modul ruft ausschließlich `RequestAction` für die neun vorgesehenen, konfigurierten Steuervariablen auf. Es verwendet deren tatsächliche Profil-Assoziationen, Min-/Max-Werte und Schrittweiten. Die Moduswerte aus der Demo sind nur Beispieldaten. Ohne Variablenaktion bleibt ein Feld schreibgeschützt; ohne passendes numerisches Profil erscheint ein Hinweis. Ein angenommener Befehl bestätigt keine physische Zustandsänderung der Wallbox; die Folgewertabfragen zeigen den Zustand der Symcon-Variablen.
 
 Die String- und Status-HTML-Variablen werden nicht als fremder HTML-Code ausgeführt. Textausgaben werden mit DOM-Textmethoden gesetzt.
 
@@ -50,6 +52,10 @@ Die String- und Status-HTML-Variablen werden nicht als fremder HTML-Code ausgef�
 | Phasen Soll | 59374 | Anzeige |
 | Phasen Ist | 41916 | Anzeige |
 | PV Speicher Ladestand | 45769 | Anzeige in % |
+| Netzleistung | 13288 | Anzeige, Verlauf beim Anklicken |
+| E-Auto Akkustand | 48784 | Anzeige in % |
+| E-Auto Restreichweite | 59274 | Anzeige in km |
+| E-Auto Soll-Ladestand | 42679 | Dropdown, Aktion |
 | PV Speicher Restzeit | 29716 | Stunden, Minuten und voraussichtliche Uhrzeit, je nach Leistung Laden/Entladen |
 | PV Speicher Leistung | 18192 | Anzeige in W, + Laden / − Entladen |
 | Ladezeit | 50934 | Anzeige |
@@ -69,8 +75,8 @@ Demovorschau: Im Repository `python3 -m http.server 8080 --bind 127.0.0.1` start
 
 Restzeit-Prüfung: `node tests/battery-time-test.cjs` prüft Stunden/Minuten, Endzeit, Tageswechsel und fehlende/ungültige Werte.
 
-Backend: `php -n tests/module-test.php` und `php -n -l WallboxTile/module.php`. Die Tests prüfen Aktionen, Grenzen, Profile, fehlende Variablen, Archivsortierung, Speicherwerte und Modulfreigabe mit Symcon-Stubs.
+Backend: `php -n tests/module-test.php` und `php -n -l WallboxTile/module.php`. Die Tests prüfen Aktionen, Grenzen, Profile, fehlende Variablen, Archivsortierung, Netzverlauf, Fahrzeugwerte/Sollwertaktion, Speicherwerte und Modulfreigabe mit Symcon-Stubs.
 
-Browser: Playwright außerhalb des Checkouts installieren, z.B. `npm install --prefix /tmp/wallbox-tools --cache /tmp/wallbox-npm-cache playwright`. Mit laufendem Demoserver `NODE_PATH=/tmp/wallbox-tools/node_modules node tests/browser-test.cjs` ausführen. Verwendet `/usr/bin/chromium`, alternativ `CHROMIUM_PATH` setzen. Prüft vier Größen, Speicher-Laden/Entladen/Ruhe/fehlende Daten, Ladestand, Moduswechsel, Freigabe, Diagramme und fehlenden Zugriffsschlüssel. Screenshots werden nach `/tmp` geschrieben.
+Browser: Playwright außerhalb des Checkouts installieren, z.B. `npm install --prefix /tmp/wallbox-tools --cache /tmp/wallbox-npm-cache playwright`. Mit laufendem Demoserver `NODE_PATH=/tmp/wallbox-tools/node_modules node tests/browser-test.cjs` ausführen. Verwendet `/usr/bin/chromium`, alternativ `CHROMIUM_PATH` setzen. Prüft vier Größen, E-Auto-Anzeigen/Sollwert-Dropdown und Netzverlauf-Dialog, Speicher-Laden/Entladen/Ruhe/fehlende Daten, Ladestand, Moduswechsel, Freigabe, Diagramme und fehlenden Zugriffsschlüssel. Screenshots werden nach `/tmp` geschrieben.
 
 PHP-Syntaxprüfung, Backend-Vertragstests und Chromium-Demotests wurden in der Cloud ausgeführt. Eine reale Symcon-Instanz samt Wallbox ist hier nicht angebunden. Installation, HTMLBox-Einbettung, Webserver-Zugriff, reale Profile und physische Schaltaktionen müssen dort abschließend geprüft werden. Die Tests schalten keine reale Wallbox.

@@ -14,12 +14,16 @@ class WallboxTile extends IPSModule
         'current' => [12961, 'Ampere (manuell)'], 'phases' => [11959, 'Phasen (manuell)'],
         'gridEnabled' => [52763, 'Netzbegrenzung aktiv'], 'gridLimit' => [30984, 'Maximale Netzbelastung'],
         'desiredPhases' => [59374, 'Wallbox Phasen (Soll)'], 'actualPhases' => [41916, 'Fahrzeug Phasen (Ist)'],
+        'gridPower' => [13288, 'Netzleistung'],
+        'carSoc' => [48784, 'E-Auto Akkustand'],
+        'carRange' => [59274, 'E-Auto Restreichweite (km)'],
+        'carTarget' => [42679, 'E-Auto Soll-Ladestand'],
         'batterySoc' => [45769, 'PV Speicher Ladestand'],
         'batteryPower' => [18192, 'PV Speicher Leistung'],
         'batteryRemaining' => [29716, 'PV Speicher Restzeit (h:m)'],
         'chargeTime' => [50934, 'Ladezeit'], 'active' => [23338, 'Modul aktiv']
     ];
-    private const CONTROLS = ['enabled', 'mode', 'pvShare', 'current', 'phases', 'gridEnabled', 'gridLimit', 'active'];
+    private const CONTROLS = ['enabled', 'mode', 'pvShare', 'current', 'phases', 'gridEnabled', 'gridLimit', 'active', 'carTarget'];
 
     public function Create()
     {
@@ -154,7 +158,7 @@ class WallboxTile extends IPSModule
     {
         $archives = IPS_GetInstanceListByModuleID('{43192F0B-135B-4CE7-A0A7-1475603F3060}');
         $result = [];
-        foreach (['power', 'pv', 'house'] as $key) {
+        foreach (['power', 'pv', 'house', 'gridPower'] as $key) {
             $id = $this->ReadPropertyInteger($key);
             $entry = ['points' => [], 'message' => 'Archivierung nicht aktiv'];
             if ($archives && $id && IPS_VariableExists($id) && AC_GetLoggingStatus($archives[0], $id)) {
