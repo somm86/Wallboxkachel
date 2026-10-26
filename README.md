@@ -14,6 +14,7 @@ Die Energieübersicht gruppiert Wallbox, Haus/PV und Speicher. Darunter stehen d
 
 ## Anzeigen und Bedienung
 
+- PV-Speicher-Restzeit aus **29716**, unverändert mit der Symcon-Formatierung (z.B. `0:33`). Bei positiver Leistung „Restzeit Laden“, bei negativer „Restzeit Entladen“. Im Ruhezustand oder bei fehlenden Daten erscheint „–“. Die Variable muss selbst die zur aktuellen Richtung passende Restzeit liefern; es wird keine separate Ladezeit berechnet.
 - PV-Speicher: Ladestand (45769) mit Füllbalken und Leistung (18192) in W. Positive Leistung bedeutet Laden, negative Leistung Entladen, 0 W Ruhe. Fehlende Werte werden als solche angezeigt.
 - Ladeleistung in kW, geladene Energie in kWh, PV-Überschuss und Hausverbrauch ohne Wallbox.
 - Status, Wallboxmodus, maximaler Ladestrom, Fehlercode, Zielzeit, Soll-/Ist-Phasen und Ladezeit.
@@ -49,6 +50,7 @@ Die String- und Status-HTML-Variablen werden nicht als fremder HTML-Code ausgef�
 | Phasen Soll | 59374 | Anzeige |
 | Phasen Ist | 41916 | Anzeige |
 | PV Speicher Ladestand | 45769 | Anzeige in % |
+| PV Speicher Restzeit | 29716 | Formatierte Anzeige h:m, je nach Leistung Laden/Entladen |
 | PV Speicher Leistung | 18192 | Anzeige in W, + Laden / − Entladen |
 | Ladezeit | 50934 | Anzeige |
 | Modul aktiv | 23338 | Aktion |
