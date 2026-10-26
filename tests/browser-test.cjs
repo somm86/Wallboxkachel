@@ -7,8 +7,8 @@ if(await page.locator('#carSoc').innerText()!=='62 %')throw Error('Car SOC missi
 if(await page.locator('#carRange').innerText()!=='200 km')throw Error('Car range missing');
 await page.getByLabel('Soll-Ladestand',{exact:true}).selectOption('90');
 if(await page.locator('#carTargetSelect').inputValue()!=='90')throw Error('Car target action failed');
-if(await page.locator('#carTargetSelect option').count()!==101)throw Error('Expected 0-100 percent options');
-for(const value of ['0','47','100']){await page.getByLabel('Soll-Ladestand',{exact:true}).selectOption(value);if(await page.locator('#carTargetSelect').inputValue()!==value)throw Error('Percent action failed '+value)}
+if(await page.locator('#carTargetSelect option').count()!==11)throw Error('Expected 0-100 percent options');
+for(const value of ['0','40','100']){await page.getByLabel('Soll-Ladestand',{exact:true}).selectOption(value);if(await page.locator('#carTargetSelect').inputValue()!==value)throw Error('Percent action failed '+value)}
 await page.evaluate(()=>{state.carTarget.writable=false;renderCar()});
 if(!await page.locator('#carTargetSelect').isDisabled())throw Error('Read-only car target enabled');
 if(await page.locator('#gridPower').innerText()!=='-770 W')throw Error('Grid power missing');

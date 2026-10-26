@@ -136,7 +136,7 @@ class WallboxTile extends IPSModule
             }
             // The requested vehicle target range is explicit, independent of its display profile.
             $profile = $key === 'carTarget'
-                ? ['min' => 0, 'max' => 100, 'step' => 1, 'associations' => []]
+                ? ['min' => 0, 'max' => 100, 'step' => 10, 'associations' => []]
                 : $field['profile'];
             if (!$profile) { throw new InvalidArgumentException('Variablenprofil mit Grenzen erforderlich'); }
             if ($profile['associations']) {
