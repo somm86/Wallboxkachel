@@ -1,16 +1,17 @@
 # Wallbox-Kachel für Symcon
 
-Responsive HTMLBox für die Kachelvisualisierung, passend zum PVWallboxManager aus den bereitgestellten Screenshots. Benötigt Symcon ab Version 7.0 mit PHP-Modulunterstützung. Keine externen JavaScript-Bibliotheken, Fonts oder Cloud-Dienste im Betrieb.
+Native PHP-Modulkachel für die Symcon-Kachelvisualisierung, passend zum PVWallboxManager. **Ab Version 2.0 wird Symcon 8.0 oder neuer benötigt.** PHP liefert die Kachel über `GetVisualizationTile()`; Darstellung und Bedienung laufen als HTML/CSS/JavaScript innerhalb der nativen Visualisierung. Keine externen JavaScript-Bibliotheken, Fonts oder Cloud-Dienste im Betrieb.
 
 ## Installation
 
-1. Diese Bibliothek nach GitHub übertragen und im Symcon-Modul-Control über ihre Repository-URL hinzufügen. Alternativ die Dateien als lokale Bibliothek in das `modules`-Verzeichnis deiner Symcon-Installation kopieren; `library.json` liegt im Bibliothekswurzelverzeichnis.
-2. Eine Instanz **Wallbox Kachel** erstellen. Die Variablen aus deinen Bildern sind vorausgewählt; alle IDs in der Instanzkonfiguration kontrollieren.
-3. Falls die Visualisierung einen anderen Ursprung als der Symcon-Webserver verwendet, unter **Symcon-Webserver URL** dessen vom Anzeigegerät erreichbare HTTPS-Adresse eintragen. Bei gleichem Ursprung kann das Feld leer bleiben. Bei Fernzugriff muss dieser Webserver über deinen vorhandenen gesicherten Zugang erreichbar sein. Ein relativer Hook-Pfad funktioniert nicht automatisch über jeden Symcon-Connect- oder App-Zugang.
-4. Änderungen übernehmen. Die untergeordnete Stringvariable **Wallbox** mit Profil `~HTMLBox` zur Kachelvisualisierung hinzufügen und als HTMLBox darstellen. Breite und Höhe dort einstellen.
-5. Für die Verlaufsdiagramme im Archiv-Control die Aufzeichnung von **50177**, **18090** und **31864** und für den Netzverlauf **13288** aktivieren. Vorhandene Daten werden verwendet; das Modul verändert deine Archivkonfiguration nicht.
+1. Im Symcon-Modul-Control die Bibliothek `https://github.com/somm86/Wallboxkachel` hinzufügen oder aktualisieren.
+2. Eine Instanz **Wallbox Kachel** erstellen oder die bestehende Instanz öffnen. Alle vorausgewählten Variablen-IDs kontrollieren und Änderungen übernehmen.
+3. **Die Instanz selbst** zur Symcon-Kachelvisualisierung hinzufügen. Die Instanz liefert ihre eigene Kacheldarstellung. Breite und Höhe dort einstellen.
+4. Für die Verlaufsdiagramme im Archiv-Control die Aufzeichnung von **50177**, **18090**, **31864** und für den Netzverlauf **13288** aktivieren. Vorhandene Daten werden verwendet; das Modul verändert deine Archivkonfiguration nicht.
 
-Die Energieübersicht gruppiert Wallbox, Haus/PV, Speicher und E-Auto in vier Bereichen; auf mittleren Breiten werden daraus zwei Spalten. Darunter stehen die Ladesteuerung sowie Betriebsdaten und Verlauf nebeneinander; auf schmalen Kacheln untereinander. „Modul aktiv“ bleibt der erste Schalter. Die Kachel passt sich der verfügbaren Breite an. Bei kleinen Höhen bleibt der Inhalt innerhalb der Kachel scrollbar. Alle Werte bleiben zugänglich; Schriftgrößen, Abstände, Bedienelemente und Diagramme passen sich auch der verfügbaren Höhe an. Es gibt keine feste iframe-Mindesthöhe; unterhalb der bedienbaren Mindestgrößen bleibt der Inhalt scrollbar. Die tatsächliche HTMLBox-Höhe hängt auch von den Einstellungen deiner Symcon-Visualisierung ab.
+Beim Update von Version 1.x bleiben die Variablenzuordnungen erhalten. Nach dem Übernehmen der Änderungen die bisherige HTMLBox in der Visualisierung durch die Instanz ersetzen. Die alte HTMLBox-Variable wird mit einem Umstellungshinweis erhalten; sie wird nicht automatisch gelöscht. Der vom Modul registrierte alte Webhook wird entfernt, fremde Webhooks bleiben erhalten. BaseURL und Zugriffsschlüssel werden nicht mehr verwendet. Es sind weder eine HTMLBox noch ein zusätzlicher Webserver-Endpunkt erforderlich.
+
+Die Energieübersicht gruppiert Wallbox, Haus/PV, Speicher und E-Auto in vier Bereichen; auf mittleren Breiten werden daraus zwei Spalten. Darunter stehen Ladesteuerung sowie Betriebsdaten und Verlauf nebeneinander; auf schmalen Kacheln untereinander. „Modul aktiv“ bleibt der erste Schalter. Schriftgrößen, Abstände, Bedienelemente und Diagramme passen sich an Breite und Höhe der nativen Kachel an. Bei sehr kleinen Größen bleibt der Inhalt scrollbar.
 
 ## Anzeigen und Bedienung
 
@@ -61,11 +62,13 @@ Die String- und Status-HTML-Variablen werden nicht als fremder HTML-Code ausgef�
 | Ladezeit | 50934 | Anzeige |
 | Modul aktiv | 23338 | Aktion |
 
-## Zugang
+## Native Anbindung und Zugang
 
-Jede Instanz registriert `/hook/wallboxkachel-INSTANZID`. Der HTML-Rahmen ist öffentlich abrufbar; Werte, Archiv und Aktionen erfordern einen zufälligen 256-Bit-Schlüssel. Er steht ausschließlich in der zugriffsgeschützten HTMLBox als URL-Fragment und wird danach in der Tab-Session gespeichert. API-Aufrufe senden ihn in einem Header. Er erscheint nicht als Queryparameter in Webserver-Zugriffslogs. Die API gibt keine CORS-Freigabe und akzeptiert ausschließlich authentifizierte POST-Anfragen.
+`SetVisualizationType(1)` registriert die eigene Darstellung der PHP-Instanz. Die Kachel sendet ihre Anfragen über Symcons `requestAction()` an die Instanzmethode `RequestAction()`. Antworten laufen über `UpdateVisualizationValue()` und `handleMessage()`. Zufällige Anfragekennungen ordnen die Antwort der jeweiligen Anfrage und geöffneten Kachel zu. Fehler und ausbleibende Antworten werden sichtbar angezeigt.
 
-Wer die HTMLBox lesen kann, kann mit ihrem Schlüssel die konfigurierten Aktionen ausführen. Gib die Variable deshalb nur berechtigten Nutzern frei und verwende bei Fernzugriff HTTPS. Kein zusätzlicher offener Router-Port ist für die Entwicklung nötig. Bei Transport über HTTP ist der Schlüssel nicht gegen Mitlesen geschützt.
+Der Zugang erfolgt über die Symcon-Visualisierung und ihre Benutzerberechtigungen. Gib die Instanz nur Nutzern frei, die die zugeordneten Geräte steuern dürfen. Das Modul betreibt keine separate HTTP-API und benötigt keinen eigenen Zugriffsschlüssel. Datenabfragen und Steuerung verwenden denselben nativen Symcon-Kanal.
+
+Die Schnittstelle folgt dem offiziellen Beispiel [Symcon/Strompreis](https://github.com/symcon/Strompreis/tree/master/PowerPrice) und den [Symcon-SDK-Stubs](https://github.com/symcon/SymconStubs).
 
 ## Entwicklung und Tests
 
@@ -75,8 +78,8 @@ Demovorschau: Im Repository `python3 -m http.server 8080 --bind 127.0.0.1` start
 
 Restzeit-Prüfung: `node tests/battery-time-test.cjs` prüft Stunden/Minuten, Endzeit, Tageswechsel und fehlende/ungültige Werte.
 
-Backend: `php -n tests/module-test.php` und `php -n -l WallboxTile/module.php`. Die Tests prüfen Aktionen, Grenzen, Profile, fehlende Variablen, Archivsortierung, Netzverlauf, Fahrzeugwerte/Sollwertaktion, Speicherwerte und Modulfreigabe mit Symcon-Stubs.
+Backend: `php -n tests/module-test.php` und `php -n -l WallboxTile/module.php`. Die Tests prüfen Aktionen, Grenzen, Profile, fehlende Variablen, Archivsortierung, Netzverlauf, Fahrzeugwerte/Sollwertaktion, Speicherwerte und Modulfreigabe mit Symcon-Stubs. Zusätzlich werden die native Visualisierungsregistrierung, Anfragen/Antworten und die wiederholbare Migration alter Webhooks geprüft.
 
-Browser: Playwright außerhalb des Checkouts installieren, z.B. `npm install --prefix /tmp/wallbox-tools --cache /tmp/wallbox-npm-cache playwright`. Mit laufendem Demoserver `NODE_PATH=/tmp/wallbox-tools/node_modules node tests/browser-test.cjs` ausführen. Verwendet `/usr/bin/chromium`, alternativ `CHROMIUM_PATH` setzen. Prüft vier Größen und Höhenanpassung bei 500/900/1400 px, E-Auto-Anzeigen/Sollwert-Dropdown und Netzverlauf-Dialog, Speicher-Laden/Entladen/Ruhe/fehlende Daten, Ladestand, Moduswechsel, Freigabe, Diagramme und fehlenden Zugriffsschlüssel. Screenshots werden nach `/tmp` geschrieben.
+Browser: Playwright außerhalb des Checkouts installieren, z.B. `npm install --prefix /tmp/wallbox-tools --cache /tmp/wallbox-npm-cache playwright`. Mit laufendem Demoserver `NODE_PATH=/tmp/wallbox-tools/node_modules node tests/browser-test.cjs` ausführen. Verwendet `/usr/bin/chromium`, alternativ `CHROMIUM_PATH` setzen. Prüft vier Größen und Höhenanpassung bei 500/900/1400 px, E-Auto-Anzeigen/Sollwert-Dropdown und Netzverlauf-Dialog, Speicher-Laden/Entladen/Ruhe/fehlende Daten, Ladestand, Moduswechsel, Freigabe, Diagramme sowie die native Nachrichtenbrücke, Sollwertaktionen, Fehlerantworten und fremde Antwortkennungen mit einer simulierten Symcon-Brücke. Screenshots werden nach `/tmp` geschrieben.
 
-PHP-Syntaxprüfung, Backend-Vertragstests und Chromium-Demotests wurden in der Cloud ausgeführt. Eine reale Symcon-Instanz samt Wallbox ist hier nicht angebunden. Installation, HTMLBox-Einbettung, Webserver-Zugriff, reale Profile und physische Schaltaktionen müssen dort abschließend geprüft werden. Die Tests schalten keine reale Wallbox.
+PHP-Syntaxprüfung, Backend-Vertragstests und Chromium-Tests wurden in der Cloud ausgeführt. Die Browserprüfungen simulieren den nativen Symcon-Kanal; eine reale Symcon-8-Instanz samt Wallbox ist hier nicht angebunden. Die Einbettung der Instanz, Benutzerberechtigungen, Profile und physischen Schaltaktionen müssen dort abschließend geprüft werden. Die Tests schalten keine reale Wallbox.

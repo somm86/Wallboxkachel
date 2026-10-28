@@ -20,4 +20,21 @@ await page.getByRole('button',{name:'Netzleistung – Verlauf öffnen',exact:tru
 await page.waitForFunction(()=>document.querySelectorAll('#gridChart path').length===1);
 await page.keyboard.press('Escape');
 if(await page.locator('#gridDialog').isVisible())throw Error('Grid dialog did not close');
-await page.getByRole('button',{name:'Manuell',exact:true}).click();await page.waitForFunction(()=>document.querySelector('button[aria-pressed="true"]')!==null);if(await page.getByRole('button',{name:'Manuell',exact:true}).getAttribute('aria-pressed')!=='true')throw Error('Mode change failed');const toggle=page.getByRole('button',{name:'Ladefreigabe',exact:true});await toggle.click();if(await toggle.getAttribute('aria-pressed')!=='false')throw Error('Toggle failed');if(await page.locator('#chart path').count()!==3)throw Error('Missing chart series');if(await page.locator('#forecastChart').count()!==0)throw Error('Price chart still present');const active=page.getByRole('button',{name:'Modul aktiv',exact:true});await active.click();if(await active.getAttribute('aria-pressed')!=='false')throw Error('Module active toggle failed');if(await page.getByText(/Börsenpreis|Strompreise gültig/).count())throw Error('Price fields still present');await page.goto('http://127.0.0.1:8080/WallboxTile/tile.html');await page.waitForFunction(()=>!document.querySelector('#error').hidden);if(errors.length)throw Error(errors.join('\n'));console.log('PASS: four sizes, height scaling at 500/900/1400px, battery charge/discharge/idle/missing states, SOC, first module switch, car readings/target dropdown/read-only mode, grid dialog, controls, charts and access error');await browser.close()})().catch(e=>{console.error(e);process.exit(1)});
+await page.getByRole('button',{name:'Manuell',exact:true}).click();await page.waitForFunction(()=>document.querySelector('button[aria-pressed="true"]')!==null);if(await page.getByRole('button',{name:'Manuell',exact:true}).getAttribute('aria-pressed')!=='true')throw Error('Mode change failed');const toggle=page.getByRole('button',{name:'Ladefreigabe',exact:true});await toggle.click();if(await toggle.getAttribute('aria-pressed')!=='false')throw Error('Toggle failed');if(await page.locator('#chart path').count()!==3)throw Error('Missing chart series');if(await page.locator('#forecastChart').count()!==0)throw Error('Price chart still present');const active=page.getByRole('button',{name:'Modul aktiv',exact:true});await active.click();if(await active.getAttribute('aria-pressed')!=='false')throw Error('Module active toggle failed');if(await page.getByText(/Börsenpreis|Strompreise gültig/).count())throw Error('Price fields still present');await page.goto('http://127.0.0.1:8080/WallboxTile/tile.html');await page.waitForFunction(()=>!document.querySelector('#error').hidden);await page.addInitScript(()=>{
+ window.__nativeRequests=[];
+ window.requestAction=(ident,value)=>{
+  const request=JSON.parse(value);window.__nativeRequests.push({ident,...request});
+  setTimeout(()=>{const response={id:request.id};if(window.__failNext){window.__failNext=false;response.error='Test: Aktion abgewiesen'}else response.result=window.demoAPI(request.op,request);window.handleMessage(JSON.stringify(response))},5);
+ };
+});
+await page.goto('http://127.0.0.1:8080/WallboxTile/tile.html');
+await page.waitForFunction(()=>document.querySelector('#connection').textContent==='Verbunden');
+await page.getByLabel('Soll-Ladestand',{exact:true}).selectOption('70');
+await page.waitForFunction(()=>document.querySelector('#carTargetSelect').value==='70');
+if(!await page.evaluate(()=>window.__nativeRequests.some(r=>r.ident==='TileRequest'&&r.op==='action'&&r.key==='carTarget'&&r.value===70)))throw Error('Native action not sent');
+await page.evaluate(()=>{window.__failNext=true});
+await page.getByRole('button',{name:'Modul aktiv',exact:true}).click();
+await page.waitForFunction(()=>document.querySelector('#error').textContent.includes('Aktion abgewiesen'));
+await page.evaluate(()=>handleMessage(JSON.stringify({id:'other-client',result:{fields:{}}})));
+if(await page.locator('#carRange').innerText()!=='200 km')throw Error('Unrelated client reply corrupted state');
+if(errors.length)throw Error(errors.join('\n'));console.log('PASS: four sizes, height scaling at 500/900/1400px, battery charge/discharge/idle/missing states, SOC, first module switch, car readings/target dropdown/read-only mode, grid dialog, controls, charts and native bridge/actions/errors');await browser.close()})().catch(e=>{console.error(e);process.exit(1)});

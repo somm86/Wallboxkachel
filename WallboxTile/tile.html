@@ -66,9 +66,15 @@ dialog .chart{height:clamp(100px,40dvh,400px)}
 <script>
 'use strict';
 const demo=new URLSearchParams(location.search).has('demo');
-let token=location.hash.slice(1); // Fragment is never transmitted to the webserver.
-if(token){sessionStorage.setItem('wallbox:'+location.pathname,token);history.replaceState(null,'',location.pathname+location.search)}
-else token=sessionStorage.getItem('wallbox:'+location.pathname)||'';
+const pendingRequests=new Map();
+function handleMessage(message){
+ let response;
+ try{response=typeof message==='string'?JSON.parse(message):message}catch{return}
+ const pending=pendingRequests.get(response?.id);
+ if(!pending)return; // Other open clients receive the same instance messages.
+ clearTimeout(pending.timer);pendingRequests.delete(response.id);
+ if(response.error)pending.reject(new Error(response.error));else pending.resolve(response.result);
+}
 const controls=[['active','Modul aktiv'],['enabled','Ladefreigabe'],['mode','Lademodus'],['pvShare','PV-Anteil'],['current','Ampere (manuell)'],['phases','Phasen (manuell)'],['gridEnabled','Netzbegrenzung'],['gridLimit','Max. Netzbelastung']];
 const details=[['status','Status'],['wallboxMode','Wallbox Modus'],['maxCurrent','Max. Ladestrom'],['error','Fehlercode'],['target','Zielzeit'],['desiredPhases','Phasen (Soll)'],['actualPhases','Phasen (Ist)']];
 let state={},historyData={},busy=false,editing=false,lastHistory=0;
@@ -76,7 +82,19 @@ const $=id=>document.getElementById(id),format=(n,d=1)=>new Intl.NumberFormat('d
 function text(el,value){el.textContent=value}
 function element(tag,cls,label){const el=document.createElement(tag);if(cls)el.className=cls;if(label!==undefined)text(el,label);return el}
 function error(message){$('error').hidden=!message;text($('error'),message)}
-async function api(op,extra={}){if(demo)return demoAPI(op,extra);if(!token)throw Error('Zugriffsschlüssel fehlt. Bitte die HTMLBox über Symcon öffnen.');const response=await fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json','X-Wallbox-Token':token},body:JSON.stringify({op,...extra}),cache:'no-store',signal:AbortSignal.timeout(12000)});const data=await response.json();if(!response.ok)throw Error(data.error||'Verbindung fehlgeschlagen');return data}
+async function api(op,extra={}){
+ if(demo)return demoAPI(op,extra);
+ if(typeof requestAction!=='function')throw Error('Bitte die Instanz direkt in der Symcon-Kachelvisualisierung öffnen (ab Symcon 8.0).');
+ const id=Array.from(crypto.getRandomValues(new Uint8Array(16)),value=>value.toString(16).padStart(2,'0')).join('');
+ return new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>{pendingRequests.delete(id);reject(Error('Keine Antwort von Symcon'))},12000);
+  pendingRequests.set(id,{resolve,reject,timer});
+  try{
+   const result=requestAction('TileRequest',JSON.stringify({id,op,...extra}));
+   if(result&&typeof result.catch==='function')result.catch(e=>{const pending=pendingRequests.get(id);if(pending){clearTimeout(timer);pendingRequests.delete(id);reject(e)}});
+  }catch(e){clearTimeout(timer);pendingRequests.delete(id);reject(e)}
+ });
+}
 function canControl(f){return f&&!f.missing&&f.writable&&(f.type===0||(f.profile&&(f.profile.associations.length||f.profile.max>f.profile.min)))}
 async function act(key,value){if(busy)return;busy=true;document.querySelectorAll('#controls button,#controls input,#carTarget select').forEach(el=>el.disabled=true);try{state=(await api('action',{key,value})).fields;error('')}catch(e){error(e.message)}finally{busy=false;editing=false;render();}}
 function carTargetOptions(field){
@@ -154,5 +172,7 @@ function demoAPI(op,extra){if(op==='history'){const out={},now=Math.floor(Date.n
 if(demo)text($('demo'),'BEISPIELDATEN · keine Wallbox-Verbindung');
 $('gridOpen').onclick=async()=>{$('gridDialog').showModal();draw('gridChart',[['gridPower','#c2a4ff']]);try{historyData=await api('history');draw('gridChart',[['gridPower','#c2a4ff']])}catch(e){text($('gridChartNote'),e.message)}};
 $('gridClose').onclick=()=>$('gridDialog').close();
-new ResizeObserver(()=>{draw();if($('gridDialog').open)draw('gridChart',[['gridPower','#c2a4ff']])}).observe($('chart'));refresh();setInterval(refresh,5000);
+new ResizeObserver(()=>{draw();if($('gridDialog').open)draw('gridChart',[['gridPower','#c2a4ff']])}).observe($('chart'));
+if(document.readyState==='complete')refresh();else window.addEventListener('load',refresh,{once:true});
+setInterval(refresh,5000);
 </script></body></html>

@@ -28,31 +28,26 @@ class WallboxTile extends IPSModule
     public function Create()
     {
         parent::Create();
-        $this->RegisterPropertyString('BaseURL', '');
-        $this->RegisterAttributeString('Token', '');
         foreach (self::FIELDS as $key => $field) {
             $this->RegisterPropertyInteger($key, $field[0]);
         }
-        $this->RegisterVariableString('Tile', 'Wallbox', '~HTMLBox', 0);
+        $this->SetVisualizationType(1);
         $this->RegisterMessage(0, IPS_KERNELMESSAGE);
     }
 
     public function ApplyChanges()
     {
         parent::ApplyChanges();
-        if ($this->ReadAttributeString('Token') === '') {
-            $this->WriteAttributeString('Token', bin2hex(random_bytes(32)));
-        }
+        // Also activate for instances created with the old HTMLBox version.
+        $this->SetVisualizationType(1);
         if (IPS_GetKernelRunlevel() === KR_READY) {
-            $this->RegisterHook();
+            $this->RemoveLegacyHook();
         }
-        $base = rtrim($this->ReadPropertyString('BaseURL'), '/');
-        if ($base !== '' && !preg_match('~^https?://[^\s<>"\x27]+$~i', $base)) {
-            $this->SetStatus(200);
-            return;
+        // Preserve the old variable and any visualization links; show migration help.
+        $legacy = @$this->GetIDForIdent('Tile');
+        if ($legacy !== false && $legacy > 0) {
+            $this->SetValue('Tile', '<p>Wallbox: Bitte in der Kachelvisualisierung jetzt die Instanz „Wallbox Kachel“ statt dieser HTMLBox auswählen.</p>');
         }
-        $url = htmlspecialchars($base . $this->Hook() . '#' . $this->ReadAttributeString('Token'), ENT_QUOTES, 'UTF-8');
-        $this->SetValue('Tile', '<iframe title="Wallbox" src="' . $url . '" style="display:block;width:100%;height:100%;min-height:0;border:0" referrerpolicy="no-referrer"></iframe>');
         $this->SetStatus(102);
     }
 
@@ -60,45 +55,74 @@ class WallboxTile extends IPSModule
     {
         parent::MessageSink($TimeStamp, $SenderID, $Message, $Data);
         if ($Message === IPS_KERNELMESSAGE && $Data[0] === KR_READY) {
-            $this->RegisterHook();
+            $this->RemoveLegacyHook();
         }
+    }
+
+    public function GetVisualizationTile(): string
+    {
+        return file_get_contents(__DIR__ . '/tile.html');
+    }
+
+    // Native visualization bridge: Symcon authenticates and routes the request.
+    public function RequestAction($Ident, $Value)
+    {
+        if ($Ident !== 'TileRequest') {
+            throw new InvalidArgumentException('Unbekannte Kachelaktion');
+        }
+        if (!is_string($Value) || strlen($Value) > 8192) {
+            throw new InvalidArgumentException('Ungültige Kachelanfrage');
+        }
+        $request = json_decode($Value, true, 32, JSON_THROW_ON_ERROR);
+        if (!is_array($request) || !is_string($request['id'] ?? null)
+            || !preg_match('/^[a-zA-Z0-9-]{1,80}$/', $request['id'])) {
+            throw new InvalidArgumentException('Ungültige Anfragekennung');
+        }
+        $response = ['id' => $request['id']];
+        try {
+            switch ($request['op'] ?? '') {
+                case 'state': $response['result'] = $this->Snapshot(); break;
+                case 'history': $response['result'] = $this->History(); break;
+                case 'action':
+                    $this->Control($request['key'] ?? '', $request['value'] ?? null);
+                    $response['result'] = $this->Snapshot();
+                    break;
+                default: throw new InvalidArgumentException('Unbekannte Anfrage');
+            }
+        } catch (Throwable $e) {
+            $response['error'] = 'Anfrage fehlgeschlagen: ' . $e->getMessage();
+        }
+        $this->UpdateVisualizationValue(json_encode($response,
+            JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE));
     }
 
     public function GetConfigurationForm()
     {
         $elements = [
-            ['type' => 'Label', 'caption' => 'HTMLBox „Wallbox“ in der Kachelvisualisierung einbinden. Aktionen und Grenzen werden aus Variablenprofilen gelesen.'],
-            ['type' => 'ValidationTextBox', 'name' => 'BaseURL', 'caption' => 'Symcon-Webserver URL (leer = gleicher Ursprung, sonst z.B. https://symcon.example.de)']
+            ['type' => 'Label', 'caption' => 'Diese Instanz direkt zur Symcon-Kachelvisualisierung hinzufügen (ab Symcon 8.0). Die frühere HTMLBox wird nicht mehr benötigt.']
         ];
         foreach (self::FIELDS as $key => $field) {
             $elements[] = ['type' => 'SelectVariable', 'name' => $key, 'caption' => $field[1]];
         }
         return json_encode(['elements' => $elements, 'actions' => [], 'status' => [
-            ['code' => 102, 'icon' => 'active', 'caption' => 'Aktiv'],
-            ['code' => 200, 'icon' => 'error', 'caption' => 'Ungültige Webserver-URL']
+            ['code' => 102, 'icon' => 'active', 'caption' => 'Aktiv']
         ]], JSON_UNESCAPED_UNICODE);
     }
 
-    private function Hook(): string
-    {
-        return '/hook/wallboxkachel-' . $this->InstanceID;
-    }
-
-    private function RegisterHook(): void
+    private function RemoveLegacyHook(): void
     {
         $instances = IPS_GetInstanceListByModuleID('{015A6EB8-D6E5-4B93-B496-0D3F77AE9FE1}');
         if (!$instances) { return; }
         $id = $instances[0];
         $hooks = json_decode(IPS_GetProperty($id, 'Hooks'), true) ?: [];
-        foreach ($hooks as $hook) {
-            if ($hook['Hook'] === $this->Hook()) {
-                if ($hook['TargetID'] !== $this->InstanceID) { $this->SetStatus(201); }
-                return;
-            }
+        $kept = array_values(array_filter($hooks, function ($hook) {
+            return !($hook['Hook'] === '/hook/wallboxkachel-' . $this->InstanceID
+                && $hook['TargetID'] === $this->InstanceID);
+        }));
+        if (count($kept) !== count($hooks)) {
+            IPS_SetProperty($id, 'Hooks', json_encode($kept));
+            IPS_ApplyChanges($id);
         }
-        $hooks[] = ['Hook' => $this->Hook(), 'TargetID' => $this->InstanceID];
-        IPS_SetProperty($id, 'Hooks', json_encode($hooks));
-        IPS_ApplyChanges($id);
     }
 
     private function Field(string $key): array
@@ -180,37 +204,4 @@ class WallboxTile extends IPSModule
         return $result;
     }
 
-    protected function ProcessHookData()
-    {
-        header('Cache-Control: no-store');
-        header('Referrer-Policy: no-referrer');
-        header('X-Content-Type-Options: nosniff');
-        $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-        if ($method === 'GET') {
-            header('Content-Type: text/html; charset=utf-8');
-            readfile(__DIR__ . '/tile.html');
-            return;
-        }
-        header('Content-Type: application/json; charset=utf-8');
-        if ($method !== 'POST') { http_response_code(405); echo '{}'; return; }
-        $token = $this->ReadAttributeString('Token');
-        if ($token === '' || !hash_equals($token, $_SERVER['HTTP_X_WALLBOX_TOKEN'] ?? '')) {
-            http_response_code(401); echo '{"error":"Nicht autorisiert"}'; return;
-        }
-        try {
-            $body = file_get_contents('php://input', false, null, 0, 8193);
-            if (strlen($body) > 8192) { throw new InvalidArgumentException('Anfrage zu groß'); }
-            $data = json_decode($body, true, 32, JSON_THROW_ON_ERROR);
-            switch ($data['op'] ?? '') {
-                case 'state': $result = $this->Snapshot(); break;
-                case 'history': $result = $this->History(); break;
-                case 'action': $this->Control($data['key'] ?? '', $data['value'] ?? null); $result = $this->Snapshot(); break;
-                default: throw new InvalidArgumentException('Unbekannte Anfrage');
-            }
-            echo json_encode($result, JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
-        } catch (Throwable $e) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Anfrage fehlgeschlagen: ' . $e->getMessage()], JSON_INVALID_UTF8_SUBSTITUTE);
-        }
-    }
 }

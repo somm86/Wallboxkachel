@@ -6,7 +6,16 @@ class IPSModule {
     public $InstanceID = 12345;
     public array $properties = [];
     public array $attributes = [];
+    public int $visualizationType = 0;
+    public array $visualizationMessages = [];
+    public array $values = [];
     public function Create() {}
+    public function ApplyChanges() {}
+    public function SetVisualizationType($type) { $this->visualizationType = $type; }
+    public function UpdateVisualizationValue($value) { $this->visualizationMessages[] = json_decode($value, true); }
+    public function GetIDForIdent($ident) { global $legacyId; return $legacyId; }
+    public function SetValue($ident, $value) { $this->values[$ident] = $value; }
+    public function SetStatus($status) {}
     public function RegisterPropertyString($name, $value) { $this->properties[$name] = $value; }
     public function RegisterPropertyInteger($name, $value) { $this->properties[$name] = $value; }
     public function RegisterAttributeString($name, $value) { $this->attributes[$name] = $value; }
@@ -17,6 +26,13 @@ class IPSModule {
 }
 $variables = [];
 $actions = [];
+$legacyId = false;
+$hooks = [];
+$applied = 0;
+function IPS_GetKernelRunlevel() { return KR_READY; }
+function IPS_GetProperty($id, $name) { global $hooks; return json_encode($hooks); }
+function IPS_SetProperty($id, $name, $value) { global $hooks; $hooks = json_decode($value, true); }
+function IPS_ApplyChanges($id) { global $applied; $applied++; }
 function IPS_VariableExists($id) { global $variables; return isset($variables[$id]); }
 function IPS_GetVariable($id) { global $variables; return $variables[$id]; }
 function IPS_VariableProfileExists($name) { return in_array($name, ['range', 'enum']); }
@@ -67,7 +83,7 @@ check($module->Snapshot()['fields']['power']['missing'], 'Missing variable expli
 $variables[50177] = $base;
 check($module->History()['power']['points'] === [[100, 50], [200, 100]], 'History ordered by time');
 check($module->History()['pv']['message'] === 'Archivierung nicht aktiv', 'Missing archive series explained');
-check(count(json_decode($module->GetConfigurationForm(), true)['elements']) === 29, 'All configured variables in form');
+check(count(json_decode($module->GetConfigurationForm(), true)['elements']) === 28, 'All configured variables in form');
 $variables[45769] = array_replace($base, ['VariableType' => 2, 'value' => 4.0]);
 $variables[18192] = array_replace($base, ['VariableType' => 2, 'value' => -704.0]);
 check($module->Snapshot()['fields']['batterySoc']['value'] === 4.0, 'Battery state of charge uses 45769');
@@ -96,4 +112,26 @@ $variables[13288] = array_replace($base, ['VariableType' => 2, 'value' => -770.0
 check($module->Snapshot()['fields']['gridPower']['value'] === -770.0, 'Grid power sign and ID preserved');
 check($module->History()['gridPower']['points'] === [[100, 50], [200, 100]], 'Grid history available');
 rejects($module, 'gridPower', 100);
+check($module->visualizationType === 1, 'Native visualization enabled on creation');
+check(strpos($module->GetVisualizationTile(), 'function handleMessage(') !== false, 'Tile provides native message callback');
+check(strpos($module->GetVisualizationTile(), 'X-Wallbox-Token') === false, 'Tile has no legacy HTTP transport');
+$module->RequestAction('TileRequest', json_encode(['id' => 'client-1', 'op' => 'state']));
+check(end($module->visualizationMessages)['id'] === 'client-1', 'Reply preserves client request identity');
+check(isset(end($module->visualizationMessages)['result']['fields']), 'Native bridge returns state');
+$variables[42679]['VariableAction'] = 10;
+$module->RequestAction('TileRequest', json_encode(['id' => 'client-2', 'op' => 'action', 'key' => 'carTarget', 'value' => 80]));
+check(end($actions) === [42679, 80.0], 'Native action reaches configured variable');
+$module->RequestAction('TileRequest', json_encode(['id' => 'client-3', 'op' => 'action', 'key' => 'gridPower', 'value' => 80]));
+check(isset(end($module->visualizationMessages)['error']), 'Rejected action returned to originating client');
+$hooks = [
+    ['Hook' => '/hook/wallboxkachel-12345', 'TargetID' => 12345],
+    ['Hook' => '/hook/other', 'TargetID' => 54321],
+    ['Hook' => '/hook/wallboxkachel-12345', 'TargetID' => 54321]
+];
+$legacyId = 999;
+$module->ApplyChanges();
+check(count($hooks) === 2 && $hooks[0]['Hook'] === '/hook/other', 'Migration removes only owned legacy endpoint');
+check(isset($module->values['Tile']), 'Old HTMLBox preserved with migration help');
+$module->ApplyChanges();
+check($applied === 1, 'Hook migration idempotent');
 echo "PASS: $checks backend contract checks\n";
