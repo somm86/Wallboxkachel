@@ -9,6 +9,9 @@ class IPSModule {
     public int $visualizationType = 0;
     public array $visualizationMessages = [];
     public array $values = [];
+    public array $buffers = [];
+    public function GetBuffer($name) { return $this->buffers[$name] ?? ''; }
+    public function SetBuffer($name, $value) { $this->buffers[$name] = $value; }
     public function Create() {}
     public function ApplyChanges() {}
     public function SetVisualizationType($type) { $this->visualizationType = $type; }
@@ -29,6 +32,7 @@ $actions = [];
 $legacyId = false;
 $hooks = [];
 $applied = 0;
+$archiveReads = 0;
 function IPS_GetKernelRunlevel() { return KR_READY; }
 function IPS_GetProperty($id, $name) { global $hooks; return json_encode($hooks); }
 function IPS_SetProperty($id, $name, $value) { global $hooks; $hooks = json_decode($value, true); }
@@ -45,7 +49,7 @@ function GetValueFormatted($id) { return 'formatted-' . $id; }
 function RequestAction($id, $value) { global $actions; $actions[] = [$id, $value]; }
 function IPS_GetInstanceListByModuleID($id) { return [1]; }
 function AC_GetLoggingStatus($archive, $id) { return true; }
-function AC_GetAggregatedValues(...$args) { return [['TimeStamp' => 200, 'Avg' => 100], ['TimeStamp' => 100, 'Avg' => 50]]; }
+function AC_GetAggregatedValues(...$args) { global $archiveReads; $archiveReads++; return [['TimeStamp' => 200, 'Avg' => 100], ['TimeStamp' => 100, 'Avg' => 50]]; }
 require __DIR__ . '/../WallboxTile/module.php';
 $module = new WallboxTile();
 $module->Create();
@@ -110,6 +114,7 @@ $variables[42679]['VariableAction'] = 0;
 rejects($module, 'carTarget', 20);
 $variables[13288] = array_replace($base, ['VariableType' => 2, 'value' => -770.0]);
 check($module->Snapshot()['fields']['gridPower']['value'] === -770.0, 'Grid power sign and ID preserved');
+$module->SetBuffer('HistoryCache', '');
 check($module->History()['gridPower']['points'] === [[100, 50], [200, 100]], 'Grid history available');
 rejects($module, 'gridPower', 100);
 check($module->visualizationType === 1, 'Native visualization enabled on creation');
@@ -134,4 +139,19 @@ check(count($hooks) === 2 && $hooks[0]['Hook'] === '/hook/other', 'Migration rem
 check(isset($module->values['Tile']), 'Old HTMLBox preserved with migration help');
 $module->ApplyChanges();
 check($applied === 1, 'Hook migration idempotent');
+$module->SetBuffer('HistoryCache', '');
+$module->History();
+$reads = $archiveReads;
+$module->History();
+check($archiveReads === $reads, 'Repeated archive requests share cached data');
+$cache = json_decode($module->GetBuffer('HistoryCache'), true);
+$cache['time'] = time() - 61;
+$module->SetBuffer('HistoryCache', json_encode($cache));
+$module->History();
+check($archiveReads > $reads, 'Archive cache expires after 60 seconds');
+$reads = $archiveReads;
+$module->properties['house'] = 50177;
+$module->History();
+check($archiveReads > $reads, 'Changed variable mapping invalidates archive cache');
+check($module->Snapshot()['fields']['gridPower']['profile'] === null, 'Display-only fields omit unused profile metadata');
 echo "PASS: $checks backend contract checks\n";

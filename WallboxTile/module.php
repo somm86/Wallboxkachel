@@ -40,6 +40,7 @@ class WallboxTile extends IPSModule
         parent::ApplyChanges();
         // Also activate for instances created with the old HTMLBox version.
         $this->SetVisualizationType(1);
+        $this->SetBuffer('HistoryCache', '');
         if (IPS_GetKernelRunlevel() === KR_READY) {
             $this->RemoveLegacyHook();
         }
@@ -131,10 +132,13 @@ class WallboxTile extends IPSModule
         if (!$id || !IPS_VariableExists($id)) { return ['missing' => true]; }
         $variable = IPS_GetVariable($id);
         $name = $variable['VariableCustomProfile'] ?: $variable['VariableProfile'];
-        $profile = $name !== '' && IPS_VariableProfileExists($name) ? IPS_GetVariableProfile($name) : null;
         $action = $variable['VariableCustomAction'] ?: $variable['VariableAction'];
+        $writable = in_array($key, self::CONTROLS, true) && $action > 0;
+        // Display-only fields need formatted text, not a second full profile lookup.
+        $needsProfile = $writable && $variable['VariableType'] !== 0 && $key !== 'carTarget';
+        $profile = $needsProfile && $name !== '' && IPS_VariableProfileExists($name) ? IPS_GetVariableProfile($name) : null;
         return ['value' => GetValue($id), 'text' => GetValueFormatted($id),
-            'type' => $variable['VariableType'], 'writable' => in_array($key, self::CONTROLS, true) && $action > 0,
+            'type' => $variable['VariableType'], 'writable' => $writable,
             'profile' => $profile ? ['min' => $profile['MinValue'], 'max' => $profile['MaxValue'],
                 'step' => $profile['StepSize'], 'associations' => $profile['Associations']] : null];
     }
@@ -183,6 +187,16 @@ class WallboxTile extends IPSModule
 
     public function History(): array
     {
+        // Shared by all open visualization clients of this instance.
+        $cacheKey = json_encode(array_map(function ($name) {
+            return $this->ReadPropertyInteger($name);
+        }, ['power', 'pv', 'house', 'gridPower']));
+        $cached = json_decode($this->GetBuffer('HistoryCache'), true);
+        if (is_array($cached) && ($cached['key'] ?? null) === $cacheKey
+            && time() >= ($cached['time'] ?? 0) && time() - ($cached['time'] ?? 0) < 60
+            && isset($cached['data'])) {
+            return $cached['data'];
+        }
         $archives = IPS_GetInstanceListByModuleID('{43192F0B-135B-4CE7-A0A7-1475603F3060}');
         $result = [];
         foreach (['power', 'pv', 'house', 'gridPower'] as $key) {
@@ -201,6 +215,7 @@ class WallboxTile extends IPSModule
             }
             $result[$key] = $entry;
         }
+        $this->SetBuffer('HistoryCache', json_encode(['key' => $cacheKey, 'time' => time(), 'data' => $result], JSON_THROW_ON_ERROR));
         return $result;
     }
 

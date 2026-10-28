@@ -24,7 +24,7 @@ Die Energieübersicht gruppiert Wallbox, Haus/PV, Speicher und E-Auto in vier Be
 - Ladefreigabe, Lademodus, PV-Anteil, manueller Ladestrom, manuelle Phasen, Netzbegrenzung, maximale Netzbelastung und Modul aktiv.
 - 24 Stunden Leistungsverlauf, mit stündlichen Archiv-Mittelwerten für Wallbox/PV/Haus. Keine Rohdatenabschneidung bei hoher Aufzeichnungsfrequenz.
 
-Die aktuellen Werte werden alle 5 Sekunden geladen, die Diagramme jede Minute. Die Browser-Zeitzone bestimmt die Beschriftung der Zeitachsen. Es wird keine Zielzeit neu berechnet und keine Wallboxregelung ersetzt.
+Die sichtbare Kachel fragt aktuelle Werte ungefähr alle 5 Sekunden ab; nach einer langsamen Antwort beginnt das nächste Intervall erst nach Abschluss der Anfrage. Ausgeblendete Kacheln pausieren und aktualisieren sich beim Einblenden sofort. Diagrammdaten werden höchstens einmal pro Minute angefordert. Die Browser-Zeitzone bestimmt die Beschriftung der Zeitachsen. Es wird keine Zielzeit neu berechnet und keine Wallboxregelung ersetzt.
 
 **Steuerung:** Das Modul ruft ausschließlich `RequestAction` für die neun vorgesehenen, konfigurierten Steuervariablen auf. Für die Wallboxsteuerung verwendet es deren tatsächliche Profil-Assoziationen, Min-/Max-Werte und Schrittweiten. Der E-Auto-Soll-Ladestand verwendet ausdrücklich 0–100 % in 10-%-Schritten. Die Moduswerte aus der Demo sind nur Beispieldaten. Ohne Variablenaktion bleibt ein Feld schreibgeschützt; ohne passendes numerisches Profil erscheint ein Hinweis. Ein angenommener Befehl bestätigt keine physische Zustandsänderung der Wallbox; die Folgewertabfragen zeigen den Zustand der Symcon-Variablen.
 
@@ -70,11 +70,23 @@ Der Zugang erfolgt über die Symcon-Visualisierung und ihre Benutzerberechtigung
 
 Die Schnittstelle folgt dem offiziellen Beispiel [Symcon/Strompreis](https://github.com/symcon/Strompreis/tree/master/PowerPrice) und den [Symcon-SDK-Stubs](https://github.com/symcon/SymconStubs).
 
+## CPU-Optimierung
+
+- Unveränderte Steuerfelder, Dropdowns und Betriebsdaten behalten ihre DOM-Elemente. Ein geänderter Leistungswert baut keine unabhängigen Bedienelemente neu auf.
+- Zahlenformatierer werden wiederverwendet. Gleiche Texte werden nicht erneut ins DOM geschrieben. Die Speicher-Endzeit wird bei Wertänderungen oder im nächsten Minutenwechsel aktualisiert.
+- Diagramme werden nur bei geänderten Daten, Abmessungen oder im nächsten Minutenwechsel neu gezeichnet. Größenmeldungen werden pro Browser-Frame zusammengefasst.
+- Gleichzeitige Wertabfragen und Archivanforderungen werden im Browser zusammengefasst. Der PHP-Archivcache gilt 60 Sekunden für alle geöffneten Kacheln dieser Instanz; neue Variablenzuordnungen oder übernommene Konfigurationsänderungen verwerfen ihn. Änderungen der Archivierung können entsprechend bis zu einer Minute benötigen.
+- Für reine Anzeigen entfallen zusätzliche Profil-Metadatenabfragen und deren Übertragung. Formatierte Werte bleiben erhalten.
+
+Der Performance-Test prüft vermiedene Arbeit: zehn unveränderte Abfragen ohne DOM-Änderungen an Steuerung/Dropdown/Betriebsdaten/Diagramm, jeweils nur eine gleichzeitige Anfrage und keine neuen Abfragen bei ausgeblendeter Kachel. Er misst keine CPU-Prozentwerte auf einer echten Symcon-Installation.
+
 ## Entwicklung und Tests
 
 Der vorhandene Checkout ist bereits isoliert; kein zusätzliches Git-Worktree erforderlich.
 
 Demovorschau: Im Repository `python3 -m http.server 8080 --bind 127.0.0.1` starten, dann lokal `/WallboxTile/tile.html?demo` öffnen. **Ausschließlich Beispieldaten**, keine Symcon-Verbindung. Die Demo verändert keine realen Variablen.
+
+Performance-Prüfung (mit laufendem Demoserver und Playwright): `NODE_PATH=/tmp/wallbox-tools/node_modules node tests/performance-test.cjs`.
 
 Restzeit-Prüfung: `node tests/battery-time-test.cjs` prüft Stunden/Minuten, Endzeit, Tageswechsel und fehlende/ungültige Werte.
 
