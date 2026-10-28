@@ -29,8 +29,8 @@ html,body{height:100%;overflow:hidden}
 header,footer{flex-shrink:0}
 h1{font-size:clamp(19px,min(3vw,3.4dvh),32px)}
 h2{font-size:clamp(13px,1.6dvh,17px);margin-bottom:var(--space)}
-.layout{flex:0 0 auto;gap:var(--space);align-items:start;grid-template-rows:auto auto}
-.overview{gap:var(--space);align-items:start}
+.layout{flex:0 0 auto;gap:var(--space);align-items:stretch;grid-template-rows:auto auto}
+.overview{gap:var(--space);align-items:stretch;grid-auto-rows:1fr}
 .card,.overview .card{padding:var(--space)}
 .overview .eyebrow{margin-bottom:var(--space)}
 .big,.wallbox-summary .big{font-size:clamp(28px,min(4.5cqw,5.4dvh),60px)}
@@ -49,13 +49,15 @@ h2{font-size:clamp(13px,1.6dvh,17px);margin-bottom:var(--space)}
 button,select{padding:clamp(5px,.9dvh,11px);min-height:30px}
 .grid-button{padding:var(--row) 0}
 .chart-card{display:flex;flex-direction:column}
+.supporting .chart-card{flex:1;min-height:0}
 .chart{height:clamp(100px,18dvh,260px);flex:none;min-height:100px}
+.supporting .chart{flex:1 0 auto}
 dialog .chart{height:clamp(100px,40dvh,400px)}
 @container(max-width:850px){
  .layout{grid-template-rows:auto;align-items:start}
  .controls #controls{height:auto;display:grid;grid-template-columns:1fr 1fr;column-gap:var(--space)}
 }
-@container(max-width:440px){.controls #controls{display:block}}
+@container(max-width:440px){.controls #controls{display:block}.overview{grid-auto-rows:auto}}
 </style></head><body><main class="tile"><header><div><div class="eyebrow">ENERGIE · E-MOBILITÄT</div><h1>Meine Wallbox</h1></div><div class="connection"><span class="dot" id="dot"></span><span id="connection">Verbinde …</span><div id="demo"></div></div></header><div id="error" role="alert" hidden></div><div class="layout"><section class="overview" aria-label="Energieübersicht">
  <div class="card wallbox-summary"><div class="eyebrow">WALLBOX</div><div class="label">Aktuelle Ladeleistung</div><div class="big"><span id="power">–</span> <small>kW</small></div><div class="status"><span class="badge" data-field="status">–</span><span class="badge" data-field="wallboxMode">–</span></div><div class="summary-bottom"><span class="label">Geladene Energie</span><strong id="energy">–</strong></div><div class="label" data-field="chargeTime">–</div></div>
  <div class="card energy-summary"><div class="eyebrow">HAUS &amp; SONNE</div><div class="energy-metric"><span class="label">☀ PV-Überschuss</span><strong class="metric" data-field="pv">–</strong></div><div class="energy-metric"><span class="label">⌂ Haus ohne Wallbox</span><strong class="metric" data-field="house">–</strong></div><button type="button" class="energy-metric grid-button" id="gridOpen" aria-label="Netzleistung – Verlauf öffnen" aria-haspopup="dialog"><span class="label">Netzleistung ↗</span><strong class="metric" id="gridPower">–</strong><span class="notice">Verlauf öffnen</span></button></div>
