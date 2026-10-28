@@ -11,7 +11,7 @@ Native PHP-Modulkachel für die Symcon-Kachelvisualisierung, passend zum PVWallb
 
 Beim Update von Version 1.x bleiben die Variablenzuordnungen erhalten. Nach dem Übernehmen der Änderungen die bisherige HTMLBox in der Visualisierung durch die Instanz ersetzen. Die alte HTMLBox-Variable wird mit einem Umstellungshinweis erhalten; sie wird nicht automatisch gelöscht. Der vom Modul registrierte alte Webhook wird entfernt, fremde Webhooks bleiben erhalten. BaseURL und Zugriffsschlüssel werden nicht mehr verwendet. Es sind weder eine HTMLBox noch ein zusätzlicher Webserver-Endpunkt erforderlich.
 
-Die Energieübersicht gruppiert Wallbox, Haus/PV, Speicher und E-Auto in vier Bereichen; auf mittleren Breiten werden daraus zwei Spalten. Darunter stehen Ladesteuerung sowie Betriebsdaten und Verlauf nebeneinander; auf schmalen Kacheln untereinander. „Modul aktiv“ bleibt der erste Schalter. Schriftgrößen, Abstände, Bedienelemente und Diagramme passen sich an Breite und Höhe der nativen Kachel an. Bei sehr kleinen Größen bleibt der Inhalt scrollbar.
+Die Energieübersicht gruppiert Wallbox, Haus/PV, Speicher und E-Auto in vier Bereichen; auf mittleren Breiten werden daraus zwei Spalten. Darunter stehen Ladesteuerung sowie Betriebsdaten und Verlauf nebeneinander; auf schmalen Kacheln untereinander. Betriebsdaten und Verlauf bilden eine eigene, kompakte Spalte. Die Steuerzeilen und Karten werden nicht auf freie Höhe auseinandergezogen; Abstände bleiben auch bei hohen Kacheln begrenzt. „Modul aktiv“ bleibt der erste Schalter. Schriftgrößen, Abstände, Bedienelemente und Diagramme passen sich an Breite und Höhe der nativen Kachel an. Bei sehr kleinen Größen bleibt der Inhalt scrollbar.
 
 ## Anzeigen und Bedienung
 
