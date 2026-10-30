@@ -171,7 +171,10 @@ function render(){
 }
 function renderControls(){
  $('controls').replaceChildren();
- for(const [key,label] of controls){const f=state[key],row=element('div','row'),head=element('div','control-head');head.append(element('span','',label),element('span','value',f?.text||'–'));row.append(head);
+ const mode=state.mode;
+ const modeName=(mode?.missing?'':mode?.profile?.associations?.find(a=>a.Value===mode.value)?.Name??mode?.text??'').trim().toLocaleLowerCase('de');
+ const hiddenControls=modeName==='pv-anteil'?['current','phases']:modeName==='manuell'?['pvShare']:['nur pv','hybrid-laden'].includes(modeName)?['pvShare','current','phases']:[];
+ for(const [key,label] of controls){if(hiddenControls.includes(key))continue;const f=state[key],row=element('div','row'),head=element('div','control-head');head.append(element('span','',label),element('span','value',f?.text||'–'));row.append(head);
   if(!canControl(f)){row.append(element('p','notice',f?.missing?'Variable nicht gefunden':!f?.writable?'Nur Anzeige · keine Variablenaktion':'Profil mit Auswahlwerten oder Grenzen erforderlich'));}
   else if(f.type===0){row.classList.add('boolean');const b=element('button','switch',f.value?'Ein':'Aus');b.setAttribute('aria-pressed',String(f.value));b.setAttribute('aria-label',label);b.onclick=()=>act(key,!f.value);row.append(b)}
   else if(f.profile.associations.length){const group=element('div','choices');for(const a of f.profile.associations){const b=element('button','',a.Name||String(a.Value));b.setAttribute('aria-pressed',String(a.Value===f.value));b.onclick=()=>act(key,a.Value);group.append(b)}row.append(group)}
