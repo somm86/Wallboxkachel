@@ -33,6 +33,7 @@ $legacyId = false;
 $hooks = [];
 $applied = 0;
 $archiveReads = 0;
+$loggedValues = null;
 function IPS_GetKernelRunlevel() { return KR_READY; }
 function IPS_GetProperty($id, $name) { global $hooks; return json_encode($hooks); }
 function IPS_SetProperty($id, $name, $value) { global $hooks; $hooks = json_decode($value, true); }
@@ -49,7 +50,19 @@ function GetValueFormatted($id) { return 'formatted-' . $id; }
 function RequestAction($id, $value) { global $actions; $actions[] = [$id, $value]; }
 function IPS_GetInstanceListByModuleID($id) { return [1]; }
 function AC_GetLoggingStatus($archive, $id) { return true; }
-function AC_GetAggregatedValues(...$args) { global $archiveReads; $archiveReads++; return [['TimeStamp' => 200, 'Avg' => 100], ['TimeStamp' => 100, 'Avg' => 50]]; }
+function AC_GetLoggedValues($archive, $id, $start, $end, $limit) {
+    global $archiveReads, $loggedValues;
+    $archiveReads++;
+    if ($loggedValues === null) {
+        return $limit === 1 ? [['TimeStamp' => $end - 30, 'Value' => 50]]
+            : [['TimeStamp' => $end - 29, 'Value' => 200], ['TimeStamp' => $end - 59, 'Value' => 100]];
+    }
+    $rows = array_values(array_filter($loggedValues, static function ($row) use ($start, $end) {
+        return $row['TimeStamp'] >= $start && $row['TimeStamp'] <= $end;
+    }));
+    usort($rows, static function ($a, $b) { return $b['TimeStamp'] <=> $a['TimeStamp']; });
+    return array_slice($rows, 0, $limit);
+}
 require __DIR__ . '/../WallboxTile/module.php';
 $module = new WallboxTile();
 $module->Create();
@@ -85,7 +98,8 @@ $variables[12961]['VariableCustomAction'] = 99;
 check($module->Snapshot()['fields']['current']['writable'], 'Custom action enables control');
 check($module->Snapshot()['fields']['power']['missing'], 'Missing variable explicit');
 $variables[50177] = $base;
-check($module->History()['power']['points'] === [[100, 50], [200, 100]], 'History ordered by time');
+$history = $module->History()['power']['points'];
+check(count($history) === 1440 && $history[0][0] < $history[1439][0] && $history[1439][1] === 150.0, 'History uses chronological time-weighted minutes');
 check($module->History()['pv']['message'] === 'Archivierung nicht aktiv', 'Missing archive series explained');
 check(count(json_decode($module->GetConfigurationForm(), true)['elements']) === 28, 'All configured variables in form');
 $variables[45769] = array_replace($base, ['VariableType' => 2, 'value' => 4.0]);
@@ -115,7 +129,7 @@ rejects($module, 'carTarget', 20);
 $variables[13288] = array_replace($base, ['VariableType' => 2, 'value' => -770.0]);
 check($module->Snapshot()['fields']['gridPower']['value'] === -770.0, 'Grid power sign and ID preserved');
 $module->SetBuffer('HistoryCache', '');
-check($module->History()['gridPower']['points'] === [[100, 50], [200, 100]], 'Grid history available');
+check(count($module->History()['gridPower']['points']) === 1440, 'Grid minute history available');
 rejects($module, 'gridPower', 100);
 check($module->visualizationType === 1, 'Native visualization enabled on creation');
 check(strpos($module->GetVisualizationTile(), 'function handleMessage(') !== false, 'Tile provides native message callback');
@@ -154,4 +168,18 @@ $module->properties['house'] = 50177;
 $module->History();
 check($archiveReads > $reads, 'Changed variable mapping invalidates archive cache');
 check($module->Snapshot()['fields']['gridPower']['profile'] === null, 'Display-only fields omit unused profile metadata');
+$minuteHistory = new ReflectionMethod(WallboxTile::class, 'MinuteHistory');
+$loggedValues = [['TimeStamp' => 120, 'Value' => 0], ['TimeStamp' => 150, 'Value' => 60]];
+check($minuteHistory->invoke($module, 1, 50177, 120, 240) === [[120, 30.0], [180, 60.0]], 'Uneven samples weighted by duration');
+$loggedValues = [['TimeStamp' => 90, 'Value' => -770]];
+check($minuteHistory->invoke($module, 1, 50177, 120, 300) === [[120, -770.0], [180, -770.0], [240, -770.0]], 'Carry previous value through sparse archive minutes');
+$loggedValues = [];
+check($minuteHistory->invoke($module, 1, 50177, 120, 240) === [], 'No samples does not fabricate values');
+$loggedValues = [['TimeStamp' => 240, 'Value' => 100]];
+check($minuteHistory->invoke($module, 1, 50177, 120, 240) === [], 'Incomplete current minute excluded');
+$loggedValues = [];
+for ($i = 120; $i < 10121; $i++) { $loggedValues[] = ['TimeStamp' => $i, 'Value' => 1]; }
+$before = $archiveReads;
+$minutes = $minuteHistory->invoke($module, 1, 50177, 120, 10140);
+check($archiveReads - $before === 2 && count($minutes) === 167 && $minutes[0][1] === 1.0 && end($minutes)[1] === 1.0, 'More than 10000 raw samples paginated without truncation');
 echo "PASS: $checks backend contract checks\n";

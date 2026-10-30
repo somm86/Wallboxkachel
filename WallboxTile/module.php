@@ -185,10 +185,57 @@ class WallboxTile extends IPSModule
         RequestAction($this->ReadPropertyInteger($key), $value);
     }
 
+    private function AddMinuteSegment(array &$sums, array &$seconds, int $start, int $end, float $value): void
+    {
+        while ($start < $end) {
+            $minute = intdiv($start, 60) * 60;
+            $stop = min($end, $minute + 60);
+            $duration = $stop - $start;
+            $sums[$minute] = ($sums[$minute] ?? 0.0) + $value * $duration;
+            $seconds[$minute] = ($seconds[$minute] ?? 0) + $duration;
+            $start = $stop;
+        }
+    }
+
+    private function MinuteHistory(int $archive, int $id, int $start, int $end): array
+    {
+        $sums = [];
+        $seconds = [];
+        $right = $end;
+        $cursor = $end - 1;
+        // Stream newest-first pages instead of loading an entire busy day into memory.
+        do {
+            $rows = AC_GetLoggedValues($archive, $id, $start, $cursor, 10000);
+            if (!is_array($rows)) { throw new RuntimeException('Rohdaten nicht verfügbar'); }
+            foreach ($rows as $row) {
+                $stamp = (int) $row['TimeStamp'];
+                if ($stamp < $start || $stamp >= $right || !is_numeric($row['Value'])
+                    || !is_finite((float) $row['Value'])) { continue; }
+                $this->AddMinuteSegment($sums, $seconds, $stamp, $right, (float) $row['Value']);
+                $right = $stamp;
+            }
+            if (count($rows) < 10000) { break; }
+            $oldest = (int) $rows[count($rows) - 1]['TimeStamp'];
+            if ($oldest > $cursor) { throw new RuntimeException('Ungültige Archivseite'); }
+            $cursor = $oldest - 1;
+        } while ($cursor >= $start);
+        // The last known value remains valid until the next recorded change.
+        if ($right > $start) {
+            $previous = AC_GetLoggedValues($archive, $id, 0, $start - 1, 1);
+            if ($previous && is_numeric($previous[0]['Value']) && is_finite((float) $previous[0]['Value'])) {
+                $this->AddMinuteSegment($sums, $seconds, $start, $right, (float) $previous[0]['Value']);
+            }
+        }
+        ksort($sums, SORT_NUMERIC);
+        $points = [];
+        foreach ($sums as $stamp => $sum) { $points[] = [$stamp, $sum / $seconds[$stamp]]; }
+        return $points;
+    }
+
     public function History(): array
     {
         // Shared by all open visualization clients of this instance.
-        $cacheKey = json_encode(array_map(function ($name) {
+        $cacheKey = 'minute-v1:' . json_encode(array_map(function ($name) {
             return $this->ReadPropertyInteger($name);
         }, ['power', 'pv', 'house', 'gridPower']));
         $cached = json_decode($this->GetBuffer('HistoryCache'), true);
@@ -204,13 +251,10 @@ class WallboxTile extends IPSModule
             $entry = ['points' => [], 'message' => 'Archivierung nicht aktiv'];
             if ($archives && $id && IPS_VariableExists($id) && AC_GetLoggingStatus($archives[0], $id)) {
                 try {
-                    // Hourly aggregates bound the payload without truncating busy raw logs.
-                    $values = AC_GetAggregatedValues($archives[0], $id, 0, time() - 86400, time(), 0);
-                    $entry['points'] = array_map(static function ($row) {
-                        return [$row['TimeStamp'], $row['Avg']];
-                    }, $values);
-                    usort($entry['points'], static function ($a, $b) { return $a[0] <=> $b[0]; });
-                    $entry['message'] = $values ? '' : 'Noch keine Archivdaten';
+                    // Completed UTC minute buckets; labels use the display device's timezone.
+                    $end = intdiv(time(), 60) * 60;
+                    $entry['points'] = $this->MinuteHistory($archives[0], $id, $end - 86400, $end);
+                    $entry['message'] = $entry['points'] ? '' : 'Noch keine Archivdaten';
                 } catch (Throwable $e) { $entry['message'] = 'Archivdaten nicht verfügbar'; }
             }
             $result[$key] = $entry;
