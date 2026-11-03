@@ -33,7 +33,7 @@ function fixture() {
 (async () => {
   const {context: c, nodes, timers, advance} = fixture();
   let stateCalls = 0, historyCalls = 0, historyFails = true, stateFails = false;
-  c.api = async op => {
+  c.api = async (op, extra) => {
     if (op === 'state') {
       stateCalls++;
       if (stateFails) throw Error('Werte nicht erreichbar');
@@ -41,7 +41,7 @@ function fixture() {
     }
     historyCalls++;
     if (historyFails) throw Error('Archiv langsam');
-    return {power: {points: [[123, 3680]]}};
+    return {[extra.series]: {points: [[123, 3680]]}};
   };
   await c.refresh();
   assert.equal(nodes.connection.textContent, 'Verbunden', 'History errors must not report a lost state connection');
@@ -54,7 +54,7 @@ function fixture() {
   advance(35000);
   historyFails = false;
   await Promise.all([c.loadHistory(), c.loadHistory()]);
-  assert.equal(historyCalls, 2, 'One history retry after the cooldown');
+  assert.equal(historyCalls, 5, 'One history retry after the cooldown');
   assert.equal(c.historyData.power.points[0][1], 3680);
   assert.equal(c.historyRetryAt, 0);
   stateFails = true;

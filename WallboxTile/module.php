@@ -32,6 +32,7 @@ class WallboxTile extends IPSModule
             $this->RegisterPropertyInteger($key, $field[0]);
         }
         $this->SetVisualizationType(1);
+        $this->RegisterTimer('RefreshHistory', 60000, 'WBT_RefreshHistory($_IPS["TARGET"]);');
         $this->RegisterMessage(0, IPS_KERNELMESSAGE);
     }
 
@@ -41,6 +42,8 @@ class WallboxTile extends IPSModule
         // Also activate for instances created with the old HTMLBox version.
         $this->SetVisualizationType(1);
         $this->SetBuffer('HistoryCache', '');
+        $this->SetBuffer('LastHistoryRequest', '0');
+        $this->SetTimerInterval('RefreshHistory', 60000);
         if (IPS_GetKernelRunlevel() === KR_READY) {
             $this->RemoveLegacyHook();
         }
@@ -79,11 +82,13 @@ class WallboxTile extends IPSModule
             || !preg_match('/^[a-zA-Z0-9-]{1,80}$/', $request['id'])) {
             throw new InvalidArgumentException('Ungültige Anfragekennung');
         }
+        $started = microtime(true);
+        $this->SendDebug('Kachelanfrage', $request['id'] . ' ' . ($request['op'] ?? 'unbekannt'), 0);
         $response = ['id' => $request['id']];
         try {
             switch ($request['op'] ?? '') {
                 case 'state': $response['result'] = $this->Snapshot(); break;
-                case 'history': $response['result'] = $this->History(); break;
+                case 'history': $response['result'] = $this->CachedHistory($request['series'] ?? null); break;
                 case 'action':
                     $this->Control($request['key'] ?? '', $request['value'] ?? null);
                     $response['result'] = $this->Snapshot();
@@ -93,8 +98,9 @@ class WallboxTile extends IPSModule
         } catch (Throwable $e) {
             $response['error'] = 'Anfrage fehlgeschlagen: ' . $e->getMessage();
         }
-        $this->UpdateVisualizationValue(json_encode($response,
-            JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE));
+        $json = json_encode($response, JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
+        $this->SendDebug('Kachelantwort', $request['id'] . ' ' . strlen($json) . ' Bytes, ' . round((microtime(true) - $started) * 1000) . ' ms', 0);
+        $this->UpdateVisualizationValue($json);
     }
 
     public function GetConfigurationForm()
@@ -236,16 +242,46 @@ class WallboxTile extends IPSModule
         }
         ksort($sums, SORT_NUMERIC);
         $points = [];
-        foreach ($sums as $stamp => $sum) { $points[] = [$stamp, $sum / $seconds[$stamp]]; }
+        foreach ($sums as $stamp => $sum) { $points[] = [$stamp, round($sum / $seconds[$stamp], 2)]; }
         return $points;
+    }
+
+    private function HistoryCacheKey(): string
+    {
+        return 'minute-v2:' . json_encode(array_map(function ($name) {
+            return $this->ReadPropertyInteger($name);
+        }, ['power', 'pv', 'house', 'gridPower']));
+    }
+
+    private function CachedHistory($series): array
+    {
+        if (!is_string($series) || !in_array($series, ['power', 'pv', 'house', 'gridPower'], true)) {
+            throw new InvalidArgumentException('Gültige Verlaufskurve erforderlich');
+        }
+        $lastRequest = (int) $this->GetBuffer('LastHistoryRequest');
+        $this->SetBuffer('LastHistoryRequest', (string) time());
+        // The timer performs archive I/O outside the visualization request.
+        if (time() - $lastRequest > 120) { $this->SetTimerInterval('RefreshHistory', 1000); }
+        $cached = json_decode($this->GetBuffer('HistoryCache'), true);
+        if (is_array($cached) && ($cached['key'] ?? null) === $this->HistoryCacheKey()
+            && isset($cached['data'][$series])) {
+            return [$series => $cached['data'][$series]];
+        }
+        return [$series => ['points' => [], 'message' => 'Verlauf wird im Hintergrund geladen', 'loading' => true]];
+    }
+
+    public function RefreshHistory(): void
+    {
+        $this->SetTimerInterval('RefreshHistory', 60000);
+        if (time() - (int) $this->GetBuffer('LastHistoryRequest') > 120) { return; }
+        try { $this->History(); }
+        catch (Throwable $e) { $this->SendDebug('Verlaufsfehler', $e->getMessage(), 0); }
     }
 
     public function History(): array
     {
         // Shared by all open visualization clients of this instance.
-        $cacheKey = 'minute-v1:' . json_encode(array_map(function ($name) {
-            return $this->ReadPropertyInteger($name);
-        }, ['power', 'pv', 'house', 'gridPower']));
+        $cacheKey = $this->HistoryCacheKey();
         $cached = json_decode($this->GetBuffer('HistoryCache'), true);
         if (is_array($cached) && ($cached['key'] ?? null) === $cacheKey
             && time() >= ($cached['time'] ?? 0) && time() - ($cached['time'] ?? 0) < 60
