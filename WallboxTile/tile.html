@@ -63,7 +63,7 @@ dialog .chart{height:clamp(100px,40dvh,400px)}
  <div class="card energy-summary"><div class="eyebrow">HAUS &amp; SONNE</div><div class="energy-metric"><span class="label">☀ PV-Überschuss</span><strong class="metric" data-field="pv">–</strong></div><div class="energy-metric"><span class="label">⌂ Haus ohne Wallbox</span><strong class="metric" data-field="house">–</strong></div><button type="button" class="energy-metric grid-button" id="gridOpen" aria-label="Netzleistung – Verlauf öffnen" aria-haspopup="dialog"><span class="label">Netzleistung ↗</span><strong class="metric" id="gridPower">–</strong><span class="notice">Verlauf öffnen</span></button></div>
  <div class="card battery-summary"><div class="eyebrow">PV-SPEICHER</div><div class="battery-top"><span class="label">Ladestand</span><strong id="batterySoc">–</strong></div><div id="batteryMeter" class="battery-meter" role="meter" aria-label="PV Speicher Ladestand" aria-valuemin="0" aria-valuemax="100"><div id="batteryFill"></div></div><div class="battery-top"><span class="label">Speicherleistung</span><strong id="batteryPower">–</strong></div><div id="batteryDirection" class="badge">Keine Daten</div><div class="notice">+ Laden · − Entladen</div><div class="summary-bottom"><span class="label" id="batteryRemainingLabel">Restzeit</span><div class="battery-remaining"><strong id="batteryRemaining">–</strong><div class="notice" id="batteryUntil"></div></div></div></div>
  <div class="card car-summary"><div class="eyebrow">E-AUTO</div><div class="battery-top"><span class="label">Akkustand</span><strong id="carSoc">–</strong></div><div class="battery-meter" id="carMeter" role="meter" aria-label="E-Auto Akkustand" aria-valuemin="0" aria-valuemax="100"><div id="carFill"></div></div><div class="energy-metric"><span class="label">Restreichweite</span><strong class="metric" id="carRange">–</strong></div><label class="label" for="carTargetSelect">Soll-Ladestand</label><div id="carTarget"></div></div>
-</section><section class="card controls"><h2>Ladesteuerung</h2><div id="controls"></div></section><div class="supporting"><section class="card operating"><h2>Betriebsdaten</h2><div id="details"></div></section><section class="card chart-card"><div class="chart-top"><h2>Leistungsverlauf · 24 Stunden</h2><div class="legend"><span style="--series:#a4ed79">Wallbox</span><span style="--series:#ffd784">PV-Überschuss</span><span style="--series:#72c8ff">Haus ohne Wallbox</span></div></div><svg class="chart" id="chart" role="img" aria-label="Leistungsverlauf der letzten 24 Stunden"></svg><div class="chart-note" id="chartNote">Lade Archivdaten …</div></section></div></div><footer><span>PV Wallbox Manager · Kachel 3.0</span><span id="updated">Noch keine Daten</span></footer></main>
+</section><section class="card controls"><h2>Ladesteuerung</h2><div id="controls"></div></section><div class="supporting"><section class="card operating"><h2>Betriebsdaten</h2><div id="details"></div></section><section class="card chart-card"><div class="chart-top"><h2>Leistungsverlauf · 24 Stunden</h2><div class="legend"><span style="--series:#a4ed79">Wallbox</span><span style="--series:#ffd784">PV-Überschuss</span><span style="--series:#72c8ff">Haus ohne Wallbox</span></div></div><svg class="chart" id="chart" role="img" aria-label="Leistungsverlauf der letzten 24 Stunden"></svg><div class="chart-note" id="chartNote">Lade Archivdaten …</div></section></div></div><footer><span>PV Wallbox Manager · Kachel 3.1</span><span id="updated">Noch keine Daten</span></footer></main>
 <dialog id="gridDialog" aria-labelledby="gridTitle"><div class="chart-top"><h2 id="gridTitle">Netzleistung · 24 Stunden</h2><button type="button" id="gridClose" aria-label="Netzverlauf schließen">Schließen ×</button></div><svg class="chart" id="gridChart" role="img" aria-label="Netzleistung der letzten 24 Stunden"></svg><div class="chart-note" id="gridChartNote"></div></dialog>
 <script>
 'use strict';
@@ -152,6 +152,7 @@ function renderCar(){
  if(hasSoc){$('carMeter').setAttribute('aria-valuenow',Math.min(100,Math.max(0,soc)));$('carMeter').setAttribute('aria-valuetext',format(soc)+' Prozent')}
  else{$('carMeter').removeAttribute('aria-valuenow');$('carMeter').setAttribute('aria-valuetext','Keine Daten')}
  text($('carRange'),typeof range==='number'&&Number.isFinite(range)?format(range)+' km':'–');
+ if(editing||busy)return;
  const field=state.carTarget,options=carTargetOptions(field),host=$('carTarget');host.replaceChildren();
  const select=element('select');select.id='carTargetSelect';select.disabled=busy||!options.length;
  const selected=options.some(o=>o.value===field?.value);
@@ -200,9 +201,9 @@ function render(updatedAt=Date.now()){
  const nextBattery=JSON.stringify([state.batterySoc,state.batteryPower,state.batteryRemaining,Math.floor(Date.now()/60000)]);
  if(nextBattery!==batterySignature){renderBattery();batterySignature=nextBattery}
  const nextCar=JSON.stringify([state.carSoc,state.carRange,state.carTarget]);
- if(nextCar!==carSignature){renderCar();carSignature=nextCar}
+ if(nextCar!==carSignature){renderCar();if(!editing&&!busy)carSignature=nextCar}
  const nextControls=JSON.stringify(controls.map(([key])=>state[key]));
- if(nextControls!==controlsSignature){renderControls();controlsSignature=nextControls}
+ if(!editing&&!busy&&nextControls!==controlsSignature){renderControls();controlsSignature=nextControls}
  const nextDetails=JSON.stringify(details.map(([key])=>state[key]));
  if(nextDetails!==detailsSignature){renderDetails();detailsSignature=nextDetails}
  text($('updated'),'Aktualisiert '+timeFormatter.format(new Date(updatedAt)));
@@ -247,7 +248,7 @@ async function loadHistory(){
 function receiveUpdate(message){
  if(demo||!message.fields||typeof message.fields!=='object'||Array.isArray(message.fields))return;
  lastPushAt=Date.now();
- if(!busy&&!editing)state=message.fields;
+ state=message.fields;
  if(message.history&&typeof message.history==='object'){
   for(const key of ['power','pv','house','gridPower']){
    const entry=message.history[key];
@@ -259,7 +260,7 @@ function receiveUpdate(message){
 function renderStream(){
  if(!isVisible())return;
  if(lastPushAt){
-  if(!busy&&!editing)render(lastPushAt);
+  render(lastPushAt);
   if(Date.now()-lastPushAt>15000){
    streamStale=true;text($('connection'),'Keine aktuellen Daten');$('dot').style.background='#ff8989';
    error('Seit mehr als 15 Sekunden keine Aktualisierung von Symcon. Letzte Werte bleiben sichtbar.');
