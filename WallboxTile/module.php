@@ -32,6 +32,7 @@ class WallboxTile extends IPSModule
             $this->RegisterPropertyInteger($key, $field[0]);
         }
         $this->SetVisualizationType(1);
+        $this->RegisterTimer('PushVisualization', 5000, 'WBT_PushVisualization($_IPS["TARGET"]);');
         $this->RegisterTimer('RefreshHistory', 60000, 'WBT_RefreshHistory($_IPS["TARGET"]);');
         $this->RegisterMessage(0, IPS_KERNELMESSAGE);
     }
@@ -43,7 +44,9 @@ class WallboxTile extends IPSModule
         $this->SetVisualizationType(1);
         $this->SetBuffer('HistoryCache', '');
         $this->SetBuffer('LastHistoryRequest', '0');
-        $this->SetTimerInterval('RefreshHistory', 60000);
+        $this->SetTimerInterval('RefreshHistory', 1000);
+        $this->SetTimerInterval('PushVisualization', 5000);
+        $this->SetBuffer('VisualizationCurve', '0');
         if (IPS_GetKernelRunlevel() === KR_READY) {
             $this->RemoveLegacyHook();
         }
@@ -65,7 +68,10 @@ class WallboxTile extends IPSModule
 
     public function GetVisualizationTile(): string
     {
-        return file_get_contents(__DIR__ . '/tile.html');
+        $snapshot = json_encode($this->Snapshot(), JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE
+            | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+        return str_replace('const initialSnapshot=null; // SYMCON_INITIAL_STATE',
+            'const initialSnapshot=' . $snapshot . ';', file_get_contents(__DIR__ . '/tile.html'));
     }
 
     // Native visualization bridge: Symcon authenticates and routes the request.
@@ -288,10 +294,31 @@ class WallboxTile extends IPSModule
         return [$series => ['points' => [], 'message' => 'Verlauf wird im Hintergrund geladen', 'loading' => true]];
     }
 
+    public function PushVisualization(): void
+    {
+        if (IPS_GetKernelRunlevel() !== KR_READY) { return; }
+        $curves = ['power', 'pv', 'house', 'gridPower'];
+        $index = (int) $this->GetBuffer('VisualizationCurve') % count($curves);
+        $series = $curves[$index];
+        $cached = json_decode($this->GetBuffer('HistoryCache'), true);
+        $entry = ['points' => [], 'message' => 'Verlauf wird im Hintergrund geladen', 'loading' => true];
+        if (is_array($cached) && ($cached['key'] ?? null) === $this->HistoryCacheKey()
+            && isset($cached['data'][$series])) {
+            $entry = $cached['data'][$series];
+        }
+        $snapshot = $this->Snapshot();
+        $json = json_encode(['event' => 'update', 'fields' => $snapshot['fields'],
+            'time' => $snapshot['time'], 'history' => [$series => $entry]],
+            JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
+        $this->UpdateVisualizationValue($json);
+        $this->SetBuffer('VisualizationCurve', (string) (($index + 1) % count($curves)));
+        $this->SendDebug('Kachelpush', $series . ' ' . strlen($json) . ' Bytes', 0);
+    }
+
     public function RefreshHistory(): void
     {
         $this->SetTimerInterval('RefreshHistory', 60000);
-        if (time() - (int) $this->GetBuffer('LastHistoryRequest') > 120) { return; }
+
         try { $this->History(); }
         catch (Throwable $e) { $this->SendDebug('Verlaufsfehler', $e->getMessage(), 0); }
     }

@@ -6,12 +6,12 @@ const html = fs.readFileSync(__dirname + '/../WallboxTile/tile.html', 'utf8');
 const script = html.split('<script>')[1].split('</script>')[0];
 new vm.Script(script);
 
-function fixture() {
+function fixture(demo = false) {
   const nodes = {}, timers = new Map();
   let now = 1000000, nextTimer = 0;
   const context = {
     Date: {now: () => now}, Math, crypto: webcrypto, TextEncoder,
-    document: {hidden: false}, tileVisible: true, demo: false,
+    document: {hidden: false}, tileVisible: true, demo, lastPushAt: 0, streamStale: false,
     nativeQueue: Promise.resolve(), transportTrace: [],
     pendingRequests: new Map(), state: {}, historyData: {},
     busy: false, editing: false, refreshInFlight: false, historyInFlight: null,
@@ -32,7 +32,7 @@ function fixture() {
 }
 
 (async () => {
-  const {context: c, nodes, timers, advance} = fixture();
+  const {context: c, nodes, timers, advance} = fixture(true);
   let stateCalls = 0, historyCalls = 0, historyFails = true, stateFails = false;
   c.api = async (op, extra) => {
     if (op === 'state') {
@@ -45,7 +45,7 @@ function fixture() {
     return {[extra.series]: {points: [[123, 3680]]}};
   };
   await c.refresh();
-  assert.equal(nodes.connection.textContent, 'Verbunden', 'History errors must not report a lost state connection');
+  assert.equal(nodes.connection.textContent, 'Demovorschau', 'History errors must not report a lost state connection');
   assert.equal(c.lastError, '');
   assert.match(nodes.chartNote.textContent, /Archiv langsam/);
   assert.equal(c.state.power.value, 3680);
@@ -69,7 +69,7 @@ function fixture() {
   stateFails = false;
   await c.refresh(); c.schedulePoll();
   assert.equal(timers.get(c.pollTimer).delay, 5000, 'Resume normal polling after recovery');
-  assert.equal(nodes.connection.textContent, 'Verbunden');
+  assert.equal(nodes.connection.textContent, 'Demovorschau');
   c.document.hidden = true;
   const callsBefore = stateCalls;
   await c.refresh(); c.schedulePoll();
