@@ -62,6 +62,10 @@ Die String- und Status-HTML-Variablen werden nicht als fremder HTML-Code ausgef�
 | Ladezeit | 50934 | Anzeige |
 | Modul aktiv | 23338 | Aktion |
 
+## Aktualisierung noch geöffneter Kacheln
+
+Nach einem Modulupdate alle geöffneten Wallbox-Kacheln schließen und neu öffnen. Ab Version 2.8 steht die geladene Kachelversion unten neben „PV Wallbox Manager“. Modulversion und bereits geladener HTML-Inhalt können sonst auseinanderliegen. Ältere Kacheln ohne Kurvenangabe erhalten keinen Fehler mehr: Kleine Cacheantworten werden im bisherigen Format geliefert, bei großen oder noch fehlenden Daten erscheint ein Hinweis zum erneuten Öffnen. Dabei werden keine Archivzugriffe in der Anfrage ausgeführt. Verbindungsabbrüche sind dadurch nicht automatisch behoben; für deren Diagnose die Einträge „Kachelanfrage“ und „Kachelantwort“ im Debugfenster der Instanz prüfen.
+
 ## Native Anbindung und Zugang
 
 `SetVisualizationType(1)` registriert die eigene Darstellung der PHP-Instanz. Die Kachel sendet ihre Anfragen über Symcons `requestAction()` an die Instanzmethode `RequestAction()`. Antworten laufen über `UpdateVisualizationValue()` und `handleMessage()`. Der Archivabruf erfolgt außerhalb der Kachelanfrage über den Timer `RefreshHistory`; übertragen wird jeweils eine Kurve. Im Debugfenster der Instanz zeigen `Kachelanfrage` und `Kachelantwort` die Anfragekennung, Antwortgröße und Bearbeitungszeit. `Verlaufsfehler` enthält Fehler des Hintergrundabrufs. Die Diagnose bestätigt keine Netzwerkzustellung. Zufällige Anfragekennungen ordnen die Antwort der jeweiligen Anfrage und geöffneten Kachel zu. Fehler und ausbleibende Antworten werden sichtbar angezeigt.
