@@ -137,6 +137,11 @@ class WallboxTile extends IPSModule
         // Display-only fields need formatted text, not a second full profile lookup.
         $needsProfile = $writable && $variable['VariableType'] !== 0 && $key !== 'carTarget';
         $profile = $needsProfile && $name !== '' && IPS_VariableProfileExists($name) ? IPS_GetVariableProfile($name) : null;
+        if ($key === 'current' && $profile) {
+            $profile['MaxValue'] = min(16, $profile['MaxValue']);
+            $profile['Associations'] = array_values(array_filter($profile['Associations'],
+                static function ($association) { return $association['Value'] <= 16; }));
+        }
         return ['value' => GetValue($id), 'text' => GetValueFormatted($id),
             'type' => $variable['VariableType'], 'writable' => $writable,
             'profile' => $profile ? ['min' => $profile['MinValue'], 'max' => $profile['MaxValue'],
@@ -161,6 +166,9 @@ class WallboxTile extends IPSModule
             if (!is_int($value) && !is_float($value)) { throw new InvalidArgumentException('Zahl erwartet'); }
             if (!is_finite((float) $value) || ($field['type'] === 1 && floor($value) != $value)) {
                 throw new InvalidArgumentException('Ungültiger Zahlenwert');
+            }
+            if ($key === 'current' && $value > 16) {
+                throw new InvalidArgumentException('Manueller Ladestrom darf maximal 16 A betragen');
             }
             // The requested vehicle target range is explicit, independent of its display profile.
             $profile = $key === 'carTarget'

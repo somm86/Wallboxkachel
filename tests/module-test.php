@@ -87,7 +87,8 @@ $module->Control('active', false);
 check(end($actions) === [23338, false], 'Module enable switch forwards boolean action');
 rejects($module, 'active', 1);
 check(!isset($module->Snapshot()['fields']['price']) && !isset($module->Snapshot()['fields']['pricesValid']), 'Price fields removed');
-foreach ([5, 33, 6.5, '16', null, INF] as $value) { rejects($module, 'current', $value); }
+check($module->Snapshot()['fields']['current']['profile']['max'] === 16, 'Manual current profile capped at 16 A');
+foreach ([5, 17, 32, 33, 6.5, '16', null, INF] as $value) { rejects($module, 'current', $value); }
 rejects($module, 'mode', 1);
 rejects($module, 'enabled', 1);
 rejects($module, 'power', 100);
