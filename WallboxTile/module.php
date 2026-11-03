@@ -82,6 +82,11 @@ class WallboxTile extends IPSModule
             || !preg_match('/^[a-zA-Z0-9-]{1,80}$/', $request['id'])) {
             throw new InvalidArgumentException('Ungültige Anfragekennung');
         }
+        if (isset($request['clientTrace']) && is_array($request['clientTrace'])) {
+            $trace = array_slice(array_filter($request['clientTrace'], 'is_string'), -20);
+            $trace = array_map(static function ($line) { return substr($line, 0, 240); }, $trace);
+            $this->SendDebug('Kachelclient', json_encode($trace, JSON_INVALID_UTF8_SUBSTITUTE), 0);
+        }
         $started = microtime(true);
         $this->SendDebug('Kachelanfrage', $request['id'] . ' ' . ($request['op'] ?? 'unbekannt') . ' Kurve=' . (is_string($request['series'] ?? null) ? $request['series'] : 'nicht angegeben'), 0);
         $response = ['id' => $request['id']];
@@ -101,6 +106,7 @@ class WallboxTile extends IPSModule
         $json = json_encode($response, JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
         $this->SendDebug('Kachelantwort', $request['id'] . ' ' . strlen($json) . ' Bytes, ' . round((microtime(true) - $started) * 1000) . ' ms', 0);
         $this->UpdateVisualizationValue($json);
+        $this->SendDebug('Kachelausgabe', $request['id'] . ' abgeschlossen, gesamt ' . round((microtime(true) - $started) * 1000) . ' ms', 0);
     }
 
     public function GetConfigurationForm()

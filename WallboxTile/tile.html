@@ -63,19 +63,24 @@ dialog .chart{height:clamp(100px,40dvh,400px)}
  <div class="card energy-summary"><div class="eyebrow">HAUS &amp; SONNE</div><div class="energy-metric"><span class="label">☀ PV-Überschuss</span><strong class="metric" data-field="pv">–</strong></div><div class="energy-metric"><span class="label">⌂ Haus ohne Wallbox</span><strong class="metric" data-field="house">–</strong></div><button type="button" class="energy-metric grid-button" id="gridOpen" aria-label="Netzleistung – Verlauf öffnen" aria-haspopup="dialog"><span class="label">Netzleistung ↗</span><strong class="metric" id="gridPower">–</strong><span class="notice">Verlauf öffnen</span></button></div>
  <div class="card battery-summary"><div class="eyebrow">PV-SPEICHER</div><div class="battery-top"><span class="label">Ladestand</span><strong id="batterySoc">–</strong></div><div id="batteryMeter" class="battery-meter" role="meter" aria-label="PV Speicher Ladestand" aria-valuemin="0" aria-valuemax="100"><div id="batteryFill"></div></div><div class="battery-top"><span class="label">Speicherleistung</span><strong id="batteryPower">–</strong></div><div id="batteryDirection" class="badge">Keine Daten</div><div class="notice">+ Laden · − Entladen</div><div class="summary-bottom"><span class="label" id="batteryRemainingLabel">Restzeit</span><div class="battery-remaining"><strong id="batteryRemaining">–</strong><div class="notice" id="batteryUntil"></div></div></div></div>
  <div class="card car-summary"><div class="eyebrow">E-AUTO</div><div class="battery-top"><span class="label">Akkustand</span><strong id="carSoc">–</strong></div><div class="battery-meter" id="carMeter" role="meter" aria-label="E-Auto Akkustand" aria-valuemin="0" aria-valuemax="100"><div id="carFill"></div></div><div class="energy-metric"><span class="label">Restreichweite</span><strong class="metric" id="carRange">–</strong></div><label class="label" for="carTargetSelect">Soll-Ladestand</label><div id="carTarget"></div></div>
-</section><section class="card controls"><h2>Ladesteuerung</h2><div id="controls"></div></section><div class="supporting"><section class="card operating"><h2>Betriebsdaten</h2><div id="details"></div></section><section class="card chart-card"><div class="chart-top"><h2>Leistungsverlauf · 24 Stunden</h2><div class="legend"><span style="--series:#a4ed79">Wallbox</span><span style="--series:#ffd784">PV-Überschuss</span><span style="--series:#72c8ff">Haus ohne Wallbox</span></div></div><svg class="chart" id="chart" role="img" aria-label="Leistungsverlauf der letzten 24 Stunden"></svg><div class="chart-note" id="chartNote">Lade Archivdaten …</div></section></div></div><footer><span>PV Wallbox Manager · Kachel 2.8</span><span id="updated">Noch keine Daten</span></footer></main>
+</section><section class="card controls"><h2>Ladesteuerung</h2><div id="controls"></div></section><div class="supporting"><section class="card operating"><h2>Betriebsdaten</h2><div id="details"></div></section><section class="card chart-card"><div class="chart-top"><h2>Leistungsverlauf · 24 Stunden</h2><div class="legend"><span style="--series:#a4ed79">Wallbox</span><span style="--series:#ffd784">PV-Überschuss</span><span style="--series:#72c8ff">Haus ohne Wallbox</span></div></div><svg class="chart" id="chart" role="img" aria-label="Leistungsverlauf der letzten 24 Stunden"></svg><div class="chart-note" id="chartNote">Lade Archivdaten …</div></section></div></div><footer><span>PV Wallbox Manager · Kachel 2.9</span><span id="updated">Noch keine Daten</span></footer></main>
 <dialog id="gridDialog" aria-labelledby="gridTitle"><div class="chart-top"><h2 id="gridTitle">Netzleistung · 24 Stunden</h2><button type="button" id="gridClose" aria-label="Netzverlauf schließen">Schließen ×</button></div><svg class="chart" id="gridChart" role="img" aria-label="Netzleistung der letzten 24 Stunden"></svg><div class="chart-note" id="gridChartNote"></div></dialog>
 <script>
 'use strict';
 const demo=new URLSearchParams(location.search).has('demo');
 const pendingRequests=new Map();
+let nativeQueue=Promise.resolve();
+const transportTrace=[];
+function traceTransport(event,id,op,detail=''){
+ transportTrace.push(Date.now()+' '+event+' '+id+' '+op+(detail?' '+String(detail).slice(0,120):''));
+ if(transportTrace.length>20)transportTrace.shift();
+}
 function handleMessage(message){
  let response;
  try{response=typeof message==='string'?JSON.parse(message):message}catch{return}
  const pending=pendingRequests.get(response?.id);
  if(!pending)return; // Other open clients receive the same instance messages.
- clearTimeout(pending.timer);pendingRequests.delete(response.id);
- if(response.error)pending.reject(new Error(response.error));else pending.resolve(response.result);
+ pending.receive(response);
 }
 const controls=[['active','Modul aktiv'],['enabled','Ladefreigabe'],['mode','Lademodus'],['pvShare','PV-Anteil'],['current','Ampere (manuell)'],['phases','Phasen (manuell)'],['gridEnabled','Netzbegrenzung'],['gridLimit','Max. Netzbelastung']];
 const details=[['status','Status'],['wallboxMode','Wallbox Modus'],['maxCurrent','Max. Ladestrom'],['error','Fehlercode'],['target','Zielzeit'],['desiredPhases','Phasen (Soll)'],['actualPhases','Phasen (Ist)']];
@@ -90,16 +95,45 @@ function element(tag,cls,label){const el=document.createElement(tag);if(cls)el.c
 function error(message){$('error').hidden=!message;text($('error'),message)}
 async function api(op,extra={}){
  if(demo)return demoAPI(op,extra);
+ const task=nativeQueue.then(()=>nativeRequest(op,extra));
+ nativeQueue=task.catch(()=>{});
+ return task;
+}
+function nativeRequest(op,extra){
  if(typeof requestAction!=='function')throw Error('Bitte die Instanz direkt in der Symcon-Kachelvisualisierung öffnen (ab Symcon 8.0).');
  const id=Array.from(crypto.getRandomValues(new Uint8Array(16)),value=>value.toString(16).padStart(2,'0')).join('');
+ const clientTrace=op==='state'?transportTrace.splice(0):undefined;
  return new Promise((resolve,reject)=>{
+  let response,received=false,acknowledged=false;
+  const cleanup=()=>{clearTimeout(timer);pendingRequests.delete(id)};
+  const fail=e=>{cleanup();reject(e instanceof Error?e:Error(e?.message||String(e)))};
+  const finish=()=>{
+   if(!received||!acknowledged)return;
+   cleanup();
+   if(response.error)reject(Error(response.error));else resolve(response.result);
+  };
   const timeout=op==='history'?60000:30000;
-  const timer=setTimeout(()=>{pendingRequests.delete(id);reject(Error(op==='history'?'Keine Antwort von Symcon beim Laden des Verlaufs':'Keine Antwort von Symcon ('+(op==='action'?'Steuerbefehl':'aktuelle Werte')+')'))},timeout);
-  pendingRequests.set(id,{resolve,reject,timer});
+  const timer=setTimeout(()=>{
+   traceTransport(received?'timeout-ack':'timeout-reply',id,op);
+   fail(Error(received?'Antwort empfangen, aber Symcon hat den Anfrageabschluss nicht bestätigt':op==='history'?'Keine Antwort von Symcon beim Laden des Verlaufs':'Keine Antwort von Symcon ('+(op==='action'?'Steuerbefehl':'aktuelle Werte')+')'));
+  },timeout);
+  pendingRequests.set(id,{timer,receive:message=>{
+   if(received)return;
+   traceTransport('reply',id,op);response=message;received=true;finish();
+  }});
+  traceTransport('send',id,op);
   try{
-   const result=requestAction('TileRequest',JSON.stringify({id,op,...extra}));
-   if(result&&typeof result.catch==='function')result.catch(e=>{const pending=pendingRequests.get(id);if(pending){clearTimeout(timer);pendingRequests.delete(id);reject(e)}});
-  }catch(e){clearTimeout(timer);pendingRequests.delete(id);reject(e)}
+   const request={id,op,...extra,...(clientTrace?.length?{clientTrace}:{})};
+   let body=JSON.stringify(request);
+   while(clientTrace?.length&&new TextEncoder().encode(body).byteLength>7000){clientTrace.shift();body=JSON.stringify(request)}
+   const result=requestAction('TileRequest',body);
+   if(result&&typeof result.then==='function'){
+    traceTransport('bridge-promise',id,op);
+    Promise.resolve(result).then(()=>{
+     traceTransport('ack',id,op);acknowledged=true;finish();
+    },e=>{traceTransport('bridge-error',id,op,e?.message||e);fail(e)});
+   }else{traceTransport('bridge-void',id,op);acknowledged=true;finish()}
+  }catch(e){traceTransport('bridge-error',id,op,e?.message||e);fail(e)}
  });
 }
 function canControl(f){return f&&!f.missing&&f.writable&&(f.type===0||(f.profile&&(f.profile.associations.length||f.profile.max>f.profile.min)))}
