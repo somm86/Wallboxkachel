@@ -32,6 +32,7 @@ class WallboxTile extends IPSModule
             $this->RegisterPropertyInteger($key, $field[0]);
         }
         $this->SetVisualizationType(1);
+        $this->RegisterTimer('PushLiveValues', 0, 'WBT_PushLiveValues($_IPS["TARGET"]);');
         $this->RegisterTimer('PushVisualization', 5000, 'WBT_PushVisualization($_IPS["TARGET"]);');
         $this->RegisterTimer('RefreshHistory', 60000, 'WBT_RefreshHistory($_IPS["TARGET"]);');
         $this->RegisterMessage(0, IPS_KERNELMESSAGE);
@@ -47,6 +48,19 @@ class WallboxTile extends IPSModule
         $this->SetTimerInterval('RefreshHistory', 1000);
         $this->SetTimerInterval('PushVisualization', 5000);
         $this->SetBuffer('VisualizationCurve', '0');
+        $this->SetBuffer('LivePushPending', '0');
+        $this->SetTimerInterval('PushLiveValues', 0);
+        $subscribed = json_decode($this->GetBuffer('VariableSubscriptions'), true) ?: [];
+        foreach ($subscribed as $id) { $this->UnregisterMessage($id, VM_UPDATE); }
+        $subscribed = [];
+        foreach (self::FIELDS as $key => $field) {
+            $id = $this->ReadPropertyInteger($key);
+            if ($id && IPS_VariableExists($id) && !in_array($id, $subscribed, true)) {
+                $this->RegisterMessage($id, VM_UPDATE);
+                $subscribed[] = $id;
+            }
+        }
+        $this->SetBuffer('VariableSubscriptions', json_encode($subscribed));
         if (IPS_GetKernelRunlevel() === KR_READY) {
             $this->RemoveLegacyHook();
         }
@@ -61,6 +75,13 @@ class WallboxTile extends IPSModule
     public function MessageSink($TimeStamp, $SenderID, $Message, $Data)
     {
         parent::MessageSink($TimeStamp, $SenderID, $Message, $Data);
+        if ($Message === VM_UPDATE && ($Data[1] ?? false)
+            && in_array($SenderID, json_decode($this->GetBuffer('VariableSubscriptions'), true) ?: [], true)
+            && $this->GetBuffer('LivePushPending') !== '1') {
+            // Coalesce bursts without postponing the first changed value indefinitely.
+            $this->SetBuffer('LivePushPending', '1');
+            $this->SetTimerInterval('PushLiveValues', 250);
+        }
         if ($Message === IPS_KERNELMESSAGE && $Data[0] === KR_READY) {
             $this->RemoveLegacyHook();
         }
@@ -306,13 +327,26 @@ class WallboxTile extends IPSModule
             && isset($cached['data'][$series])) {
             $entry = $cached['data'][$series];
         }
-        $snapshot = $this->Snapshot();
-        $json = json_encode(['event' => 'update', 'fields' => $snapshot['fields'],
-            'time' => $snapshot['time'], 'history' => [$series => $entry]],
-            JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
-        $this->UpdateVisualizationValue($json);
+        $this->BroadcastSnapshot([$series => $entry], $series);
         $this->SetBuffer('VisualizationCurve', (string) (($index + 1) % count($curves)));
-        $this->SendDebug('Kachelpush', $series . ' ' . strlen($json) . ' Bytes', 0);
+    }
+
+    public function PushLiveValues(): void
+    {
+        $this->SetTimerInterval('PushLiveValues', 0);
+        $this->SetBuffer('LivePushPending', '0');
+        if (IPS_GetKernelRunlevel() === KR_READY) { $this->BroadcastSnapshot(null, 'live'); }
+    }
+
+    private function BroadcastSnapshot(?array $history, string $label): void
+    {
+        $snapshot = $this->Snapshot();
+        $payload = ['event' => 'update', 'fields' => $snapshot['fields'], 'time' => $snapshot['time']];
+        if ($history !== null) { $payload['history'] = $history; }
+        $json = json_encode($payload, JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
+        $this->UpdateVisualizationValue($json);
+        $power = $snapshot['fields']['power']['value'] ?? null;
+        $this->SendDebug('Kachelpush', $label . ' ' . strlen($json) . ' Bytes, Ladeleistung=' . json_encode($power) . ' W', 0);
     }
 
     public function RefreshHistory(): void

@@ -2,6 +2,7 @@
 // Standalone contract tests. These stubs are not a Symcon runtime.
 const IPS_KERNELMESSAGE = 10100;
 const KR_READY = 10103;
+const VM_UPDATE = 10603;
 class IPSModule {
     public $InstanceID = 12345;
     public array $properties = [];
@@ -14,8 +15,9 @@ class IPSModule {
     public function SetBuffer($name, $value) { $this->buffers[$name] = $value; }
     public array $timers = [];
     public array $debug = [];
+    public array $timerChanges = [];
     public function RegisterTimer($name, $interval, $script) { $this->timers[$name] = $interval; }
-    public function SetTimerInterval($name, $interval) { $this->timers[$name] = $interval; }
+    public function SetTimerInterval($name, $interval) { $this->timers[$name] = $interval; $this->timerChanges[] = [$name, $interval]; }
     public function SendDebug($name, $message, $format) { $this->debug[] = [$name, $message]; }
     public function Create() {}
     public function ApplyChanges() {}
@@ -30,7 +32,10 @@ class IPSModule {
     public function ReadPropertyInteger($name) { return $this->properties[$name]; }
     public function ReadAttributeString($name) { return $this->attributes[$name]; }
     public function RegisterVariableString(...$args) {}
-    public function RegisterMessage(...$args) {}
+    public array $messages = [];
+    public function RegisterMessage($id, $message) { $this->messages[$message][$id] = true; }
+    public function UnregisterMessage($id, $message) { unset($this->messages[$message][$id]); }
+    public function MessageSink($time, $sender, $message, $data) {}
 }
 $variables = [];
 $actions = [];
@@ -264,4 +269,29 @@ $push = end($module->visualizationMessages);
 check(!isset($push['history']['power']['loading']), 'Warm push delivers cached archive points');
 check($archiveReads === $reads, 'Warm pushes perform no archive reads');
 check(strlen(json_encode($push)) < 60000, 'Combined snapshot and one curve remain bounded for the test data');
+$module->ApplyChanges();
+check(isset($module->messages[VM_UPDATE][50177]), 'Live power variable subscribes to VM_UPDATE');
+$module->MessageSink(time(), 50177, VM_UPDATE, [1440, false]);
+check($module->timers['PushLiveValues'] === 0, 'Unchanged variable notifications do not schedule a live update');
+$module->MessageSink(time(), 999999, VM_UPDATE, [1440, true]);
+check($module->timers['PushLiveValues'] === 0, 'Unmapped variable messages ignored');
+$variables[50177]['value'] = 1440;
+$module->MessageSink(time(), 50177, VM_UPDATE, [1440, true]);
+check($module->timers['PushLiveValues'] === 250, 'Changed values schedule a 250 ms live push');
+$changes = count($module->timerChanges);
+$module->MessageSink(time(), 50177, VM_UPDATE, [1500, true]);
+check(count($module->timerChanges) === $changes, 'Further changes do not postpone the pending update');
+$reads = $archiveReads;
+$curve = $module->GetBuffer('VisualizationCurve');
+$module->PushLiveValues();
+$push = end($module->visualizationMessages);
+check($push['fields']['power']['value'] === 1440 && !isset($push['history']), 'Live push uses current values and excludes archive curves');
+check($archiveReads === $reads && $module->GetBuffer('VisualizationCurve') === $curve, 'Live update neither reads archives nor consumes a curve slot');
+check($module->timers['PushLiveValues'] === 0 && $module->GetBuffer('LivePushPending') === '0', 'Live timer is one-shot and releases the pending flag');
+$module->MessageSink(time(), 50177, VM_UPDATE, [1600, true]);
+check($module->timers['PushLiveValues'] === 250, 'Next change can schedule another live update');
+$module->properties['gridPower'] = 69999;
+$variables[69999] = $base;
+$module->ApplyChanges();
+check(!isset($module->messages[VM_UPDATE][13288]) && isset($module->messages[VM_UPDATE][69999]), 'Changing mappings replaces variable subscriptions');
 echo "PASS: $checks backend contract checks\n";
