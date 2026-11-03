@@ -12,6 +12,11 @@ class IPSModule {
     public array $buffers = [];
     public function GetBuffer($name) { return $this->buffers[$name] ?? ''; }
     public function SetBuffer($name, $value) { $this->buffers[$name] = $value; }
+    public array $timers = [];
+    public array $debug = [];
+    public function RegisterTimer($name, $interval, $script) { $this->timers[$name] = $interval; }
+    public function SetTimerInterval($name, $interval) { $this->timers[$name] = $interval; }
+    public function SendDebug($name, $message, $format) { $this->debug[] = [$name, $message]; }
     public function Create() {}
     public function ApplyChanges() {}
     public function SetVisualizationType($type) { $this->visualizationType = $type; }
@@ -169,6 +174,30 @@ $module->properties['house'] = 50177;
 $module->History();
 check($archiveReads > $reads, 'Changed variable mapping invalidates archive cache');
 check($module->Snapshot()['fields']['gridPower']['profile'] === null, 'Display-only fields omit unused profile metadata');
+$module->SetBuffer('HistoryCache', '');
+$module->SetBuffer('LastHistoryRequest', '0');
+$reads = $archiveReads;
+$module->RequestAction('TileRequest', json_encode(['id' => 'cold-history', 'op' => 'history', 'series' => 'power']));
+check($archiveReads === $reads, 'Cold native history request performs no archive I/O');
+check(end($module->visualizationMessages)['result']['power']['loading'] === true, 'Cold history returns loading status immediately');
+check($module->timers['RefreshHistory'] === 1000, 'First history client schedules background refresh');
+$module->RequestAction('TileRequest', json_encode(['id' => 'live-values', 'op' => 'state']));
+check($archiveReads === $reads && isset(end($module->visualizationMessages)['result']['fields']), 'Live state remains independent of archive initialization');
+$module->RefreshHistory();
+check($archiveReads > $reads && $module->timers['RefreshHistory'] === 60000, 'Background timer builds shared archive cache');
+$reads = $archiveReads;
+$module->RequestAction('TileRequest', json_encode(['id' => 'cached-power', 'op' => 'history', 'series' => 'power']));
+$reply = end($module->visualizationMessages);
+check($archiveReads === $reads, 'Warm native history request only reads cache');
+check(array_keys($reply['result']) === ['power'] && count($reply['result']['power']['points']) === 1440, 'Native history returns one full minute curve per response');
+check(strlen(json_encode($reply)) < 60000, 'Individual native response stays below 60 KB for test curve');
+$module->RequestAction('TileRequest', json_encode(['id' => 'invalid-series', 'op' => 'history', 'series' => 'unknown']));
+check(isset(end($module->visualizationMessages)['error']) && $archiveReads === $reads, 'Invalid curve rejected without archive I/O');
+$module->SetBuffer('LastHistoryRequest', (string) (time() - 121));
+$module->SetBuffer('HistoryCache', '');
+$module->RefreshHistory();
+check($archiveReads === $reads, 'No archive work when no recent visualization client');
+check(count($module->debug) > 0 && end($module->debug)[0] === 'Kachelantwort', 'Native requests expose timing and size diagnostics');
 $minuteHistory = new ReflectionMethod(WallboxTile::class, 'MinuteHistory');
 $loggedValues = [['TimeStamp' => 120, 'Value' => 0], ['TimeStamp' => 150, 'Value' => 60]];
 check($minuteHistory->invoke($module, 1, 50177, 120, 240) === [[120, 30.0], [180, 60.0]], 'Uneven samples weighted by duration');

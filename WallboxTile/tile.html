@@ -191,8 +191,20 @@ function isVisible(){return !document.hidden&&tileVisible}
 async function loadHistory(){
  if(Date.now()<historyRetryAt||(lastHistory&&Date.now()-lastHistory<60000))return;
  if(historyInFlight)return historyInFlight;
- historyInFlight=(async()=>{historyData=await api('history');lastHistory=Date.now();historyError='';chartSignatures.clear();if(isVisible()){draw();if($('gridDialog').open)draw('gridChart',[['gridPower','#c2a4ff']])}})();
- try{await historyInFlight;historyRetryAt=0}catch(e){historyRetryAt=Date.now()+60000;historyError='Verlauf nicht aktualisiert: '+e.message+' · Neuer Versuch in einer Minute';throw e}finally{historyInFlight=null}
+ historyInFlight=(async()=>{
+  const next={};
+  // Fetch cached curves sequentially to keep each native response small.
+  for(const series of ['power','pv','house','gridPower']){
+   if(!isVisible()||busy)return;
+   const data=await api('history',{series});
+   if(data[series])next[series]=data[series];
+  }
+  historyData=next;historyError='';chartSignatures.clear();
+  const loading=Object.values(next).some(entry=>entry.loading);
+  if(loading){historyRetryAt=Date.now()+10000}else{lastHistory=Date.now();historyRetryAt=0}
+  if(isVisible()){draw();if($('gridDialog').open)draw('gridChart',[['gridPower','#c2a4ff']])}
+ })();
+ try{await historyInFlight}catch(e){historyRetryAt=Date.now()+60000;historyError='Verlauf nicht aktualisiert: '+e.message+' · Neuer Versuch in einer Minute';throw e}finally{historyInFlight=null}
 }
 async function refresh(){
  if(busy||editing||refreshInFlight||!isVisible())return;
