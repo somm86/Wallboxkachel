@@ -79,7 +79,7 @@ function handleMessage(message){
 }
 const controls=[['active','Modul aktiv'],['enabled','Ladefreigabe'],['mode','Lademodus'],['pvShare','PV-Anteil'],['current','Ampere (manuell)'],['phases','Phasen (manuell)'],['gridEnabled','Netzbegrenzung'],['gridLimit','Max. Netzbelastung']];
 const details=[['status','Status'],['wallboxMode','Wallbox Modus'],['maxCurrent','Max. Ladestrom'],['error','Fehlercode'],['target','Zielzeit'],['desiredPhases','Phasen (Soll)'],['actualPhases','Phasen (Ist)']];
-let state={},historyData={},busy=false,editing=false,lastHistory=0;
+let state={},historyData={},busy=false,editing=false,lastHistory=0,historyRetryAt=0,pollFailures=0,historyError='';
 let controlsSignature='',detailsSignature='',carSignature='',batterySignature='';
 let refreshInFlight=false,historyInFlight=null,pollTimer=0,resizeFrame=0,tileVisible=true,stateRevision=0;
 const numberFormatters=new Map(),chartSignatures=new Map();
@@ -93,7 +93,8 @@ async function api(op,extra={}){
  if(typeof requestAction!=='function')throw Error('Bitte die Instanz direkt in der Symcon-Kachelvisualisierung öffnen (ab Symcon 8.0).');
  const id=Array.from(crypto.getRandomValues(new Uint8Array(16)),value=>value.toString(16).padStart(2,'0')).join('');
  return new Promise((resolve,reject)=>{
-  const timer=setTimeout(()=>{pendingRequests.delete(id);reject(Error('Keine Antwort von Symcon'))},12000);
+  const timeout=op==='history'?60000:30000;
+  const timer=setTimeout(()=>{pendingRequests.delete(id);reject(Error(op==='history'?'Keine Antwort von Symcon beim Laden des Verlaufs':'Keine Antwort von Symcon ('+(op==='action'?'Steuerbefehl':'aktuelle Werte')+')'))},timeout);
   pendingRequests.set(id,{resolve,reject,timer});
   try{
    const result=requestAction('TileRequest',JSON.stringify({id,op,...extra}));
@@ -185,13 +186,13 @@ function renderControls(){
 function renderDetails(){
  $('details').replaceChildren();for(const [key,label] of details){const row=element('div','row'),value=element('span','value',state[key]?.text||'–');if(key==='error')value.className='badge '+(state[key]?.value===0?'good':'bad');row.append(element('span','label',label),value);$('details').append(row)}
 }
-function draw(target='chart',series=[['power','#a4ed79'],['pv','#ffd784'],['house','#72c8ff']]){const svg=$(target),w=Math.max(svg.clientWidth,260),h=svg.clientHeight||180,p={l:48,r:12,t:10,b:25},now=Math.floor(Date.now()/1000),start=now-86400,points=series.flatMap(([key])=>historyData[key]?.points||[]),min=Math.min(0,...points.map(p=>p[1])),max=Math.max(1000,...points.map(p=>p[1]));const signature=JSON.stringify([w,h,Math.floor(now/60),series.map(([key,color])=>[color,historyData[key]])]);if(chartSignatures.get(target)===signature)return;chartSignatures.set(target,signature);svg.setAttribute('viewBox',`0 0 ${w} ${h}`);svg.replaceChildren();const x=t=>p.l+(t-start)/86400*(w-p.l-p.r),y=v=>h-p.b-(v-min)/(max-min)*(h-p.t-p.b);function add(tag,attrs,label){const el=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const [k,v] of Object.entries(attrs))el.setAttribute(k,v);if(label!==undefined)text(el,label);svg.append(el);return el}for(let i=0;i<=3;i++){const v=min+(max-min)*i/3;add('line',{x1:p.l,y1:y(v),x2:w-p.r,y2:y(v),stroke:'#2b3942'});add('text',{x:p.l-6,y:y(v)+4,'text-anchor':'end'},format(v/1000)+' kW')}for(let i=0;i<=4;i++){const t=start+i*21600;add('text',{x:x(t),y:h-4,'text-anchor':i===0?'start':i===4?'end':'middle'},new Date(t*1000).toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'}))}for(const [key,color] of series){let previous=null,path='';for(const [t,v] of historyData[key]?.points||[]){if(t<start||t>now||!Number.isFinite(v))continue;path+=(previous===null||t-previous>120?'M':'L')+x(t)+','+y(v)+' ';previous=t}if(path)add('path',{d:path,stroke:color,'stroke-width':2,fill:'none'});const visible=(historyData[key]?.points||[]).filter(([t,v])=>t>=start&&t<=now&&Number.isFinite(v));if(visible.length===1)add('circle',{cx:x(visible[0][0]),cy:y(visible[0][1]),r:3,fill:color})}text($(target==='chart'?'chartNote':'gridChartNote'),points.length?'Minütliche Mittelwerte · Zeiten in der Zeitzone dieses Geräts':series.map(([key])=>historyData[key]||{}).map(x=>x.message).filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' · ')||'Keine Archivdaten');}
+function draw(target='chart',series=[['power','#a4ed79'],['pv','#ffd784'],['house','#72c8ff']]){const svg=$(target),w=Math.max(svg.clientWidth,260),h=svg.clientHeight||180,p={l:48,r:12,t:10,b:25},now=Math.floor(Date.now()/1000),start=now-86400,points=series.flatMap(([key])=>historyData[key]?.points||[]),min=Math.min(0,...points.map(p=>p[1])),max=Math.max(1000,...points.map(p=>p[1]));const signature=JSON.stringify([w,h,Math.floor(now/60),series.map(([key,color])=>[color,historyData[key]])]);if(chartSignatures.get(target)===signature)return;chartSignatures.set(target,signature);svg.setAttribute('viewBox',`0 0 ${w} ${h}`);svg.replaceChildren();const x=t=>p.l+(t-start)/86400*(w-p.l-p.r),y=v=>h-p.b-(v-min)/(max-min)*(h-p.t-p.b);function add(tag,attrs,label){const el=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const [k,v] of Object.entries(attrs))el.setAttribute(k,v);if(label!==undefined)text(el,label);svg.append(el);return el}for(let i=0;i<=3;i++){const v=min+(max-min)*i/3;add('line',{x1:p.l,y1:y(v),x2:w-p.r,y2:y(v),stroke:'#2b3942'});add('text',{x:p.l-6,y:y(v)+4,'text-anchor':'end'},format(v/1000)+' kW')}for(let i=0;i<=4;i++){const t=start+i*21600;add('text',{x:x(t),y:h-4,'text-anchor':i===0?'start':i===4?'end':'middle'},new Date(t*1000).toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'}))}for(const [key,color] of series){let previous=null,path='';for(const [t,v] of historyData[key]?.points||[]){if(t<start||t>now||!Number.isFinite(v))continue;path+=(previous===null||t-previous>120?'M':'L')+x(t)+','+y(v)+' ';previous=t}if(path)add('path',{d:path,stroke:color,'stroke-width':2,fill:'none'});const visible=(historyData[key]?.points||[]).filter(([t,v])=>t>=start&&t<=now&&Number.isFinite(v));if(visible.length===1)add('circle',{cx:x(visible[0][0]),cy:y(visible[0][1]),r:3,fill:color})}text($(target==='chart'?'chartNote':'gridChartNote'),historyError||(points.length?'Minütliche Mittelwerte · Zeiten in der Zeitzone dieses Geräts':series.map(([key])=>historyData[key]||{}).map(x=>x.message).filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' · ')||'Keine Archivdaten'));}
 function isVisible(){return !document.hidden&&tileVisible}
 async function loadHistory(){
- if(lastHistory&&Date.now()-lastHistory<60000)return;
+ if(Date.now()<historyRetryAt||(lastHistory&&Date.now()-lastHistory<60000))return;
  if(historyInFlight)return historyInFlight;
- historyInFlight=(async()=>{historyData=await api('history');lastHistory=Date.now();if(isVisible()){draw();if($('gridDialog').open)draw('gridChart',[['gridPower','#c2a4ff']])}})();
- try{await historyInFlight}finally{historyInFlight=null}
+ historyInFlight=(async()=>{historyData=await api('history');lastHistory=Date.now();historyError='';chartSignatures.clear();if(isVisible()){draw();if($('gridDialog').open)draw('gridChart',[['gridPower','#c2a4ff']])}})();
+ try{await historyInFlight;historyRetryAt=0}catch(e){historyRetryAt=Date.now()+60000;historyError='Verlauf nicht aktualisiert: '+e.message+' · Neuer Versuch in einer Minute';throw e}finally{historyInFlight=null}
 }
 async function refresh(){
  if(busy||editing||refreshInFlight||!isVisible())return;
@@ -199,12 +200,14 @@ async function refresh(){
  try{
   const data=await api('state');
   if(revision!==stateRevision||!isVisible())return;
-  state=data.fields;render();text($('connection'),demo?'Demovorschau':'Verbunden');$('dot').style.background='#a4ed79';error('');
-  await loadHistory();
- }catch(e){if(isVisible()){error(e.message);text($('connection'),'Keine Verbindung');$('dot').style.background='#ff8989'}}
+  pollFailures=0;state=data.fields;render();text($('connection'),demo?'Demovorschau':'Verbunden');$('dot').style.background='#a4ed79';error('');
+  try{await loadHistory()}catch(e){if(isVisible()){
+   text($('chartNote'),historyError);text($('gridChartNote'),historyError);
+  }}
+ }catch(e){pollFailures=Math.min(pollFailures+1,4);if(isVisible()){error(e.message);text($('connection'),'Keine Verbindung · erneuter Versuch');$('dot').style.background='#ff8989'}}
  finally{refreshInFlight=false}
 }
-function schedulePoll(delay=5000){
+function schedulePoll(delay=Math.min(60000,5000*2**pollFailures)){
  clearTimeout(pollTimer);
  if(!isVisible())return;
  pollTimer=setTimeout(async()=>{try{await refresh()}finally{schedulePoll()}},delay);
@@ -224,6 +227,7 @@ function scheduleCharts(){
 const resizeObserver=new ResizeObserver(scheduleCharts);
 resizeObserver.observe($('chart'));resizeObserver.observe($('gridChart'));
 document.addEventListener('visibilitychange',visibilityChanged);
+window.addEventListener('online',visibilityChanged);
 if(typeof IntersectionObserver==='function')new IntersectionObserver(entries=>{const visible=entries[0].isIntersecting;if(visible!==tileVisible){tileVisible=visible;visibilityChanged()}},{threshold:0}).observe(document.querySelector('.tile'));
 if(document.readyState==='complete')schedulePoll(0);else window.addEventListener('load',()=>schedulePoll(0),{once:true});
 window.addEventListener('pagehide',()=>{clearTimeout(pollTimer);if(resizeFrame)cancelAnimationFrame(resizeFrame)});
