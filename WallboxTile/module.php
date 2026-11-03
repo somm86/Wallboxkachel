@@ -83,7 +83,7 @@ class WallboxTile extends IPSModule
             throw new InvalidArgumentException('Ungültige Anfragekennung');
         }
         $started = microtime(true);
-        $this->SendDebug('Kachelanfrage', $request['id'] . ' ' . ($request['op'] ?? 'unbekannt'), 0);
+        $this->SendDebug('Kachelanfrage', $request['id'] . ' ' . ($request['op'] ?? 'unbekannt') . ' Kurve=' . (is_string($request['series'] ?? null) ? $request['series'] : 'nicht angegeben'), 0);
         $response = ['id' => $request['id']];
         try {
             switch ($request['op'] ?? '') {
@@ -255,8 +255,20 @@ class WallboxTile extends IPSModule
 
     private function CachedHistory($series): array
     {
-        if (!is_string($series) || !in_array($series, ['power', 'pv', 'house', 'gridPower'], true)) {
+        $curves = ['power', 'pv', 'house', 'gridPower'];
+        if ($series !== null && (!is_string($series) || !in_array($series, $curves, true))) {
             throw new InvalidArgumentException('Gültige Verlaufskurve erforderlich');
+        }
+        // Older, still-open tiles request all curves without a series argument.
+        // Never restart synchronous archive work or send an unbounded legacy response.
+        if ($series === null) {
+            $cached = json_decode($this->GetBuffer('HistoryCache'), true);
+            if (is_array($cached) && ($cached['key'] ?? null) === $this->HistoryCacheKey()
+                && isset($cached['data']) && strlen(json_encode($cached['data'])) <= 40000) {
+                return $cached['data'];
+            }
+            return array_fill_keys($curves, ['points' => [],
+                'message' => 'Ältere Kachelversion geöffnet: Kachel schließen und neu öffnen (ab Version 2.8)']);
         }
         $lastRequest = (int) $this->GetBuffer('LastHistoryRequest');
         $this->SetBuffer('LastHistoryRequest', (string) time());
