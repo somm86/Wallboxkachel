@@ -14,7 +14,7 @@ const context = {
   text: (el, value) => el.textContent = value
 };
 vm.createContext(context);
-vm.runInContext(script.slice(script.indexOf('function batteryRemainingDisplay('), script.indexOf('function render(){')), context);
+vm.runInContext(script.slice(script.indexOf('function batteryRemainingDisplay('), script.indexOf('function render(')), context);
 const now = new Date('2026-10-26T13:52:00Z');
 const display = text => context.batteryRemainingDisplay({text}, now);
 assert.equal(display('0:33').duration, '0 Std. 33 Min.');

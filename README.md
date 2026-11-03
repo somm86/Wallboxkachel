@@ -24,7 +24,11 @@ Die Energieübersicht gruppiert Wallbox, Haus/PV, Speicher und E-Auto in vier Be
 - Ladefreigabe, Lademodus, PV-Anteil, manueller Ladestrom, manuelle Phasen, Netzbegrenzung, maximale Netzbelastung und Modul aktiv. Bei ausgeschalteter Netzbegrenzung wird die maximale Netzbelastung ausgeblendet; der gespeicherte Grenzwert bleibt erhalten.
 - 24 Stunden Leistungsverlauf, mit minütlichen, zeitgewichteten Mittelwerten aus Archiv-Rohdaten für Wallbox/PV/Haus. Die letzten 24 Stunden enthalten bis zu 1.440 abgeschlossene Minuten. Rohwerte werden in Seiten gelesen; der letzte bekannte Wert gilt bis zur nächsten aufgezeichneten Änderung. Ohne Rohdaten kann kein Minutenverlauf erzeugt werden.
 
-Die sichtbare Kachel fragt aktuelle Werte ungefähr alle 5 Sekunden ab; nach einer langsamen Antwort beginnt das nächste Intervall erst nach Abschluss der Anfrage. Ausgeblendete Kacheln pausieren und aktualisieren sich beim Einblenden sofort. Diagrammdaten werden normalerweise höchstens einmal pro Minute angefordert, in vier aufeinanderfolgenden Anfragen mit jeweils einer Kurve. Die Anfragen lesen ausschließlich den gemeinsamen Cache. Ein Symcon-Timer berechnet die Archivdaten im Hintergrund, solange kürzlich eine Kachel Verlauf angefordert hat. Während der ersten Berechnung erscheint „Verlauf wird im Hintergrund geladen“; die Kachel prüft nach zehn Sekunden erneut. Die Minutenmittelwerte werden für die Übertragung auf 0,01 W gerundet. Nach einem fehlgeschlagenen Archivabruf wartet die Kachel eine Minute vor dem nächsten Versuch. Archivfehler erscheinen am Diagramm und setzen eine erfolgreiche Werteverbindung nicht auf „Keine Verbindung“. Für aktuelle Werte und Steuerbefehle gilt ein Antwortlimit von 30 Sekunden, für den Verlauf 60 Sekunden. Bei Verbindungsfehlern steigen die Abfragepausen auf 10, 20, 40 und maximal 60 Sekunden; nach einer erfolgreichen Werteabfrage gelten wieder 5 Sekunden. Steuerbefehle werden nie automatisch wiederholt. Die Browser-Zeitzone bestimmt die Beschriftung der Zeitachsen. Es wird keine Zielzeit neu berechnet und keine Wallboxregelung ersetzt.
+Ab Version 3.0 liefert PHP den ersten aktuellen Snapshot direkt im Kachel-HTML. Anschließend sendet der Instanz-Timer `PushVisualization` alle fünf Sekunden aktuelle Werte und genau eine der vier Verlaufskurven über `UpdateVisualizationValue()`. Die vier Kurven werden über vier Timerzyklen verteilt. Die Kachel verwendet für die reguläre Anzeige keine `requestAction()`-Leseaufrufe mehr. Der native Visualisierungskanal muss weiterhin verbunden sein; bei mehr als 15 Sekunden ohne neue Werte zeigt die Kachel fehlende Aktualisierungen und erhält die letzten Werte samt deren Zeitstempel. Eine neue Datenmeldung stellt die Anzeige wieder her. Ausgeblendete Kacheln übernehmen Werte in den Speicher und aktualisieren ihre Darstellung beim Einblenden.
+
+Der Timer `RefreshHistory` berechnet den gemeinsamen Archivcache ungefähr einmal pro Minute. Beide Timer laufen auch bei geschlossenen Kacheln; die Arbeit fällt einmal pro Instanz an. Die Minutenmittelwerte bleiben zeitgewichtet und werden für die Übertragung auf 0,01 W gerundet. Archivprobleme erscheinen am Diagramm. Während der Initialisierung erscheint „Verlauf wird im Hintergrund geladen“.
+
+Nur Benutzeraktionen senden Steuerbefehle über `requestAction()`. Deren Antwortlimit beträgt 30 Sekunden; sie werden nie automatisch wiederholt. Die Browser-Zeitzone bestimmt die Beschriftung der Zeitachsen. Es wird keine Zielzeit neu berechnet und keine Wallboxregelung ersetzt.
 
 **Steuerung:** Das Modul ruft ausschließlich `RequestAction` für die neun vorgesehenen, konfigurierten Steuervariablen auf. Für die Wallboxsteuerung verwendet es deren tatsächliche Profil-Assoziationen, Min-/Max-Werte und Schrittweiten. Der manuelle Ladestrom ist zusätzlich auf maximal 16 A begrenzt (auch serverseitig); niedrigere Profilgrenzen bleiben erhalten. Der E-Auto-Soll-Ladestand verwendet ausdrücklich 0–100 % in 10-%-Schritten. Die Moduswerte aus der Demo sind nur Beispieldaten. Ohne Variablenaktion bleibt ein Feld schreibgeschützt; ohne passendes numerisches Profil erscheint ein Hinweis. Ein angenommener Befehl bestätigt keine physische Zustandsänderung der Wallbox; die Folgewertabfragen zeigen den Zustand der Symcon-Variablen.
 
@@ -62,15 +66,13 @@ Die String- und Status-HTML-Variablen werden nicht als fremder HTML-Code ausgef�
 | Ladezeit | 50934 | Anzeige |
 | Modul aktiv | 23338 | Aktion |
 
-## Native Anfrageabschlüsse und Diagnose
+## Native Updates und Diagnose
 
-Ab Version 2.9 laufen Werte-, Verlaufs- und Steueranfragen innerhalb einer Kachel über eine gemeinsame Warteschlange. Wenn `requestAction()` ein Promise liefert, wartet die Kachel sowohl auf dessen Abschluss als auch auf die Datenantwort über `handleMessage()`. Eine frühe Datenantwort gibt den nächsten Aufruf damit nicht vorzeitig frei. Liefert die Brücke keinen Promise, wartet die Kachel wie bisher auf die Datenantwort. Steuerbefehle werden nicht automatisch wiederholt.
+`handleMessage()` verarbeitet ab Version 3.0 zwei Nachrichtentypen: serverseitige Ereignisse mit `event: update` für die laufende Anzeige sowie Antworten mit Anfragekennung für einzelne Steuerbefehle. Eigene Aktionen warten bei einer Promise-basierten Brücke auf Datenantwort und nativen Abschluss. Bei Brücken ohne Promise, wie in den eingereichten mobilen Dumps, erfolgt die Zuordnung anhand der Datenantwort. Die Datenanzeige hängt von diesen Aktionsaufrufen nicht ab.
 
-Bei fehlender Datenantwort erscheint „Keine Antwort von Symcon“. Liegen die Daten bereits vor, aber der native Aufruf endet nicht, lautet die Meldung „Antwort empfangen, aber Symcon hat den Anfrageabschluss nicht bestätigt“. Das trennt zwei unterschiedliche Fehlerfälle.
+Im Debugfenster zeigt `Kachelpush` die gesendete Kurve und Nachrichtengröße. `Kachelanfrage`, `Kachelantwort` und `Kachelausgabe` protokollieren manuelle Befehle und Anfragen noch geöffneter älterer Kacheln. `Kachelclient` überträgt bis zu 20 vorherige Browserereignisse bei der nächsten Benutzeraktion; dadurch entstehen keine zusätzlichen Diagnoseanfragen. Die Einträge unterscheiden `send`, `reply`, `bridge-promise`/`bridge-void`, `ack`, `bridge-error`, `timeout-reply` und `timeout-ack`. `Kachelausgabe` bestätigt die Rückkehr aus `UpdateVisualizationValue()`, nicht den tatsächlichen Empfang auf dem Gerät.
 
-Im Debugfenster zeigt `Kachelclient` bei der nächsten Werteanfrage bis zu 20 Ereignisse der vorigen Browseranfragen: `send`, `bridge-promise` beziehungsweise `bridge-void`, `reply`, `ack`, `bridge-error`, `timeout-reply` und `timeout-ack`. Die Ereignisse enthalten Browser-Zeitstempel in Millisekunden seit Unix-Epoche und Anfragekennung. Die Diagnose ist mengenbegrenzt und löst keine zusätzlichen Anfragen aus; nach einem Abbruch erscheint sie erst, sobald wieder eine Werteanfrage den Server erreicht. `Kachelausgabe` protokolliert zusätzlich, dass `UpdateVisualizationValue()` im Backend beendet wurde. Das bestätigt nicht den Empfang im Browser.
-
-Die tatsächliche Ursache eines Abbruchs auf einer Symcon-Testing-Installation muss anhand dieser Ereignisse bestätigt werden.
+Der Wechsel vermeidet die regelmäßig ausfallenden Leseaufrufe aus den eingereichten mobilen Protokollen. Ein Fehler im nativen Symcon-Transport kann weiterhin Steuerbefehle oder die Zustellung serverseitiger Updates betreffen; die Ursache des darunterliegenden Transportproblems ist nicht behoben oder nachgewiesen.
 
 ## Aktualisierung noch geöffneter Kacheln
 
@@ -78,9 +80,9 @@ Nach einem Modulupdate alle geöffneten Wallbox-Kacheln schließen und neu öffn
 
 ## Native Anbindung und Zugang
 
-`SetVisualizationType(1)` registriert die eigene Darstellung der PHP-Instanz. Die Kachel sendet ihre Anfragen über Symcons `requestAction()` an die Instanzmethode `RequestAction()`. Antworten laufen über `UpdateVisualizationValue()` und `handleMessage()`. Der Archivabruf erfolgt außerhalb der Kachelanfrage über den Timer `RefreshHistory`; übertragen wird jeweils eine Kurve. Im Debugfenster der Instanz zeigen `Kachelanfrage` und `Kachelantwort` die Anfragekennung, Antwortgröße und Bearbeitungszeit. `Verlaufsfehler` enthält Fehler des Hintergrundabrufs. Die Diagnose bestätigt keine Netzwerkzustellung. Zufällige Anfragekennungen ordnen die Antwort der jeweiligen Anfrage und geöffneten Kachel zu. Fehler und ausbleibende Antworten werden sichtbar angezeigt.
+`SetVisualizationType(1)` registriert die eigene Darstellung der PHP-Instanz. Aktuelle Werte werden im HTML sicher als JSON eingebettet und danach über `PushVisualization`, `UpdateVisualizationValue()` und `handleMessage()` aktualisiert. Eine Nachricht enthält einen aktuellen Snapshot und eine Kurve aus dem gemeinsamen Archivcache; Archiv-Rohdaten werden ausschließlich im separaten Timer `RefreshHistory` gelesen. `requestAction()` bleibt für explizite Benutzeraktionen und zur Kompatibilität mit älteren Kacheln erhalten. Zufällige Anfragekennungen ordnen Aktionsantworten der jeweiligen geöffneten Kachel zu.
 
-Der Zugang erfolgt über die Symcon-Visualisierung und ihre Benutzerberechtigungen. Gib die Instanz nur Nutzern frei, die die zugeordneten Geräte steuern dürfen. Das Modul betreibt keine separate HTTP-API und benötigt keinen eigenen Zugriffsschlüssel. Datenabfragen und Steuerung verwenden denselben nativen Symcon-Kanal.
+Der Zugang erfolgt über die Symcon-Visualisierung und ihre Benutzerberechtigungen. Gib die Instanz nur Nutzern frei, die die zugeordneten Geräte steuern dürfen. Das Modul betreibt keine separate HTTP-API und benötigt keinen eigenen Zugriffsschlüssel. Datenupdates und Steuerung verwenden den nativen Symcon-Kanal.
 
 Die Schnittstelle folgt dem offiziellen Beispiel [Symcon/Strompreis](https://github.com/symcon/Strompreis/tree/master/PowerPrice) und den [Symcon-SDK-Stubs](https://github.com/symcon/SymconStubs).
 
@@ -89,10 +91,10 @@ Die Schnittstelle folgt dem offiziellen Beispiel [Symcon/Strompreis](https://git
 - Unveränderte Steuerfelder, Dropdowns und Betriebsdaten behalten ihre DOM-Elemente. Ein geänderter Leistungswert baut keine unabhängigen Bedienelemente neu auf.
 - Zahlenformatierer werden wiederverwendet. Gleiche Texte werden nicht erneut ins DOM geschrieben. Die Speicher-Endzeit wird bei Wertänderungen oder im nächsten Minutenwechsel aktualisiert.
 - Diagramme werden nur bei geänderten Daten, Abmessungen oder im nächsten Minutenwechsel neu gezeichnet. Größenmeldungen werden pro Browser-Frame zusammengefasst.
-- Gleichzeitige Wertabfragen und Archivanforderungen werden im Browser zusammengefasst. Der PHP-Archivcache gilt 60 Sekunden für alle geöffneten Kacheln dieser Instanz; neue Variablenzuordnungen oder übernommene Konfigurationsänderungen verwerfen ihn. Änderungen der Archivierung können entsprechend bis zu einer Minute benötigen.
+- Die native Kachel erzeugt keine periodischen Leseanfragen. Snapshot und Archivcache werden pro Instanz für alle geöffneten Kacheln gemeinsam bereitgestellt; Konfigurationsänderungen verwerfen den Cache. Nachrichten enthalten höchstens eine Kurve.
 - Für reine Anzeigen entfallen zusätzliche Profil-Metadatenabfragen und deren Übertragung. Formatierte Werte bleiben erhalten.
 
-Der Performance-Test prüft vermiedene Arbeit: zehn unveränderte Abfragen ohne DOM-Änderungen an Steuerung/Dropdown/Betriebsdaten/Diagramm, jeweils nur eine gleichzeitige Anfrage und keine neuen Abfragen bei ausgeblendeter Kachel. Er misst keine CPU-Prozentwerte auf einer echten Symcon-Installation.
+Der Performance-Test prüft vermiedene Arbeit: unveränderte Anzeigen ohne DOM-Änderungen an Steuerung/Dropdown/Betriebsdaten/Diagramm, null periodische Leseanfragen und Aktualisierung nach erneutem Einblenden. Er misst keine CPU-Prozentwerte auf einer echten Symcon-Installation.
 
 ## Entwicklung und Tests
 
@@ -101,6 +103,8 @@ Der vorhandene Checkout ist bereits isoliert; kein zusätzliches Git-Worktree er
 Demovorschau: Im Repository `python3 -m http.server 8080 --bind 127.0.0.1` starten, dann lokal `/WallboxTile/tile.html?demo` öffnen. **Ausschließlich Beispieldaten**, keine Symcon-Verbindung. Die Demo verändert keine realen Variablen.
 
 Performance-Prüfung (mit laufendem Demoserver und Playwright): `NODE_PATH=/tmp/wallbox-tools/node_modules node tests/performance-test.cjs`.
+
+Push-Prüfung: `node tests/push-browser-test.cjs` (mit Playwright und lokalem Server) simuliert einen mobilen Kanal mit vollständig gesperrten Leseaufrufen, laufenden serverseitigen Daten, Unterbrechung/Wiederherstellung und einzelnen Steuerbefehlen.
 
 Verbindungsprüfung: `node tests/connection-test.cjs` prüft zusätzlich beide Reihenfolgen von Datenantwort und nativem Abschluss, parallele Aufrufer, späte native Fehler und die Diagnosegrößenbegrenzung. `node tests/native-queue-browser-test.cjs` simuliert im Chromium-Browser frühe Datenantworten bei verzögerten nativen Bestätigungen. Weitere Prüffälle sind Archivfehler unabhängig von aktuellen Werten, Wiederholpausen, Wiederverbindung, langsame Antworten und ausbleibende Steuerantworten ohne erneuten Steuerbefehl. Die Prüfung simuliert den Symcon-Kanal.
 

@@ -28,6 +28,7 @@ const assert = require('node:assert/strict');
         });
       };
     });
+    await page.addInitScript(require('./native-push-fixture.cjs'));
     await page.goto('http://127.0.0.1:8080/WallboxTile/tile.html');
     await page.waitForFunction(() => document.getElementById('connection').textContent === 'Verbunden' && !refreshInFlight);
     await page.evaluate(async () => {

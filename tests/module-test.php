@@ -215,8 +215,8 @@ check(isset(end($module->visualizationMessages)['error']) && $archiveReads === $
 $module->SetBuffer('LastHistoryRequest', (string) (time() - 121));
 $module->SetBuffer('HistoryCache', '');
 $module->RefreshHistory();
-check($archiveReads === $reads, 'No archive work when no recent visualization client');
-check(count($module->debug) > 0 && end($module->debug)[0] === 'Kachelausgabe', 'Native requests expose timing and size diagnostics');
+check($archiveReads > $reads, 'Background history prepares push data independently of read requests');
+check(count($module->debug) > 0, 'Native requests expose timing and size diagnostics');
 $module->RequestAction('TileRequest', json_encode(['id' => 'client-diagnostics', 'op' => 'state',
     'clientTrace' => ['1793734500000 timeout-reply prior-id state']]));
 $clientDebug = array_values(array_filter($module->debug, static function ($entry) { return $entry[0] === 'Kachelclient'; }));
@@ -237,4 +237,31 @@ for ($i = 120; $i < 10121; $i++) { $loggedValues[] = ['TimeStamp' => $i, 'Value'
 $before = $archiveReads;
 $minutes = $minuteHistory->invoke($module, 1, 50177, 120, 10140);
 check($archiveReads - $before === 2 && count($minutes) === 167 && $minutes[0][1] === 1.0 && end($minutes)[1] === 1.0, 'More than 10000 raw samples paginated without truncation');
+check($module->timers['PushVisualization'] === 5000, 'Native stream has a five-second timer');
+$reads = $archiveReads;
+$html = $module->GetVisualizationTile();
+check(strpos($html, 'const initialSnapshot=null;') === false, 'Native tile embeds initial snapshot');
+check($archiveReads === $reads, 'Initial page render does not read archives');
+$variables[50934] = array_replace($base, ['VariableType' => 3, 'value' => '</script><script>alert(1)</script>']);
+$html = $module->GetVisualizationTile();
+check(strpos($html, '\\u003C') !== false && strpos($html, '</script><script>alert(1)') === false, 'Embedded initial values escape script delimiters');
+$module->SetBuffer('HistoryCache', '');
+$module->SetBuffer('VisualizationCurve', '0');
+$reads = $archiveReads;
+$seen = [];
+for ($i = 0; $i < 4; $i++) {
+    $module->PushVisualization();
+    $push = end($module->visualizationMessages);
+    check($push['event'] === 'update' && isset($push['fields']) && !isset($push['id']), 'Timer sends an unsolicited snapshot');
+    $seen[] = array_keys($push['history'])[0];
+}
+check($seen === ['power', 'pv', 'house', 'gridPower'], 'Timer rotates through one archive curve per message');
+check($archiveReads === $reads, 'Cold pushes perform no archive reads');
+$module->RefreshHistory();
+$reads = $archiveReads;
+$module->PushVisualization();
+$push = end($module->visualizationMessages);
+check(!isset($push['history']['power']['loading']), 'Warm push delivers cached archive points');
+check($archiveReads === $reads, 'Warm pushes perform no archive reads');
+check(strlen(json_encode($push)) < 60000, 'Combined snapshot and one curve remain bounded for the test data');
 echo "PASS: $checks backend contract checks\n";
