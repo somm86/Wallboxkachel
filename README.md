@@ -62,6 +62,16 @@ Die String- und Status-HTML-Variablen werden nicht als fremder HTML-Code ausgef�
 | Ladezeit | 50934 | Anzeige |
 | Modul aktiv | 23338 | Aktion |
 
+## Native Anfrageabschlüsse und Diagnose
+
+Ab Version 2.9 laufen Werte-, Verlaufs- und Steueranfragen innerhalb einer Kachel über eine gemeinsame Warteschlange. Wenn `requestAction()` ein Promise liefert, wartet die Kachel sowohl auf dessen Abschluss als auch auf die Datenantwort über `handleMessage()`. Eine frühe Datenantwort gibt den nächsten Aufruf damit nicht vorzeitig frei. Liefert die Brücke keinen Promise, wartet die Kachel wie bisher auf die Datenantwort. Steuerbefehle werden nicht automatisch wiederholt.
+
+Bei fehlender Datenantwort erscheint „Keine Antwort von Symcon“. Liegen die Daten bereits vor, aber der native Aufruf endet nicht, lautet die Meldung „Antwort empfangen, aber Symcon hat den Anfrageabschluss nicht bestätigt“. Das trennt zwei unterschiedliche Fehlerfälle.
+
+Im Debugfenster zeigt `Kachelclient` bei der nächsten Werteanfrage bis zu 20 Ereignisse der vorigen Browseranfragen: `send`, `bridge-promise` beziehungsweise `bridge-void`, `reply`, `ack`, `bridge-error`, `timeout-reply` und `timeout-ack`. Die Ereignisse enthalten Browser-Zeitstempel in Millisekunden seit Unix-Epoche und Anfragekennung. Die Diagnose ist mengenbegrenzt und löst keine zusätzlichen Anfragen aus; nach einem Abbruch erscheint sie erst, sobald wieder eine Werteanfrage den Server erreicht. `Kachelausgabe` protokolliert zusätzlich, dass `UpdateVisualizationValue()` im Backend beendet wurde. Das bestätigt nicht den Empfang im Browser.
+
+Die tatsächliche Ursache eines Abbruchs auf einer Symcon-Testing-Installation muss anhand dieser Ereignisse bestätigt werden.
+
 ## Aktualisierung noch geöffneter Kacheln
 
 Nach einem Modulupdate alle geöffneten Wallbox-Kacheln schließen und neu öffnen. Ab Version 2.8 steht die geladene Kachelversion unten neben „PV Wallbox Manager“. Modulversion und bereits geladener HTML-Inhalt können sonst auseinanderliegen. Ältere Kacheln ohne Kurvenangabe erhalten keinen Fehler mehr: Kleine Cacheantworten werden im bisherigen Format geliefert, bei großen oder noch fehlenden Daten erscheint ein Hinweis zum erneuten Öffnen. Dabei werden keine Archivzugriffe in der Anfrage ausgeführt. Verbindungsabbrüche sind dadurch nicht automatisch behoben; für deren Diagnose die Einträge „Kachelanfrage“ und „Kachelantwort“ im Debugfenster der Instanz prüfen.
@@ -92,7 +102,7 @@ Demovorschau: Im Repository `python3 -m http.server 8080 --bind 127.0.0.1` start
 
 Performance-Prüfung (mit laufendem Demoserver und Playwright): `NODE_PATH=/tmp/wallbox-tools/node_modules node tests/performance-test.cjs`.
 
-Verbindungsprüfung: `node tests/connection-test.cjs` prüft Archivfehler unabhängig von aktuellen Werten, Wiederholpausen, Wiederverbindung, langsame Antworten und ausbleibende Steuerantworten ohne erneuten Steuerbefehl. Die Prüfung simuliert den Symcon-Kanal.
+Verbindungsprüfung: `node tests/connection-test.cjs` prüft zusätzlich beide Reihenfolgen von Datenantwort und nativem Abschluss, parallele Aufrufer, späte native Fehler und die Diagnosegrößenbegrenzung. `node tests/native-queue-browser-test.cjs` simuliert im Chromium-Browser frühe Datenantworten bei verzögerten nativen Bestätigungen. Weitere Prüffälle sind Archivfehler unabhängig von aktuellen Werten, Wiederholpausen, Wiederverbindung, langsame Antworten und ausbleibende Steuerantworten ohne erneuten Steuerbefehl. Die Prüfung simuliert den Symcon-Kanal.
 
 Restzeit-Prüfung: `node tests/battery-time-test.cjs` prüft Stunden/Minuten, Endzeit, Tageswechsel und fehlende/ungültige Werte.
 

@@ -216,7 +216,13 @@ $module->SetBuffer('LastHistoryRequest', (string) (time() - 121));
 $module->SetBuffer('HistoryCache', '');
 $module->RefreshHistory();
 check($archiveReads === $reads, 'No archive work when no recent visualization client');
-check(count($module->debug) > 0 && end($module->debug)[0] === 'Kachelantwort', 'Native requests expose timing and size diagnostics');
+check(count($module->debug) > 0 && end($module->debug)[0] === 'Kachelausgabe', 'Native requests expose timing and size diagnostics');
+$module->RequestAction('TileRequest', json_encode(['id' => 'client-diagnostics', 'op' => 'state',
+    'clientTrace' => ['1793734500000 timeout-reply prior-id state']]));
+$clientDebug = array_values(array_filter($module->debug, static function ($entry) { return $entry[0] === 'Kachelclient'; }));
+check(strpos(end($clientDebug)[1], 'timeout-reply') !== false, 'Browser-side timeouts reach the instance debug log on the next request');
+check(isset(end($module->visualizationMessages)['result']['fields']), 'Client diagnostics preserve normal state replies');
+check(end($module->debug)[0] === 'Kachelausgabe', 'Debug records completion after visualization output');
 $minuteHistory = new ReflectionMethod(WallboxTile::class, 'MinuteHistory');
 $loggedValues = [['TimeStamp' => 120, 'Value' => 0], ['TimeStamp' => 150, 'Value' => 60]];
 check($minuteHistory->invoke($module, 1, 50177, 120, 240) === [[120, 30.0], [180, 60.0]], 'Uneven samples weighted by duration');
